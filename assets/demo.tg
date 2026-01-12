@@ -1,0 +1,19 @@
+// Main demo for README header
+@output "demo.gif"
+@size 60x16
+@font 16
+@speed 40ms
+@title "termgif"
+@theme "mocha"
+@radius 12
+@quality 3
+@end 3s
+
+-> "termgif create hello" >>
+~800ms
+
+-> "termgif hello" >>
+~1.5s
+
+-> "# beautiful GIF ready!" >>
+~2s

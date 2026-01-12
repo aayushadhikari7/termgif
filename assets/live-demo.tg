@@ -1,0 +1,19 @@
+// Live mode demo - runs real commands
+@output "live-demo.gif"
+@size 60x14
+@font 16
+@speed 50ms
+@title "live mode"
+@theme "dracula"
+@radius 10
+@quality 3
+@end 2s
+
+-> "echo 'Hello from termgif!'" >>
+~1s
+
+-> "python --version" >>
+~1s
+
+-> "date" >>
+~1.5s

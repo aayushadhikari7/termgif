@@ -1,0 +1,51 @@
+// =============================================
+// hello.tg - termgif script
+// Run with: termgif hello
+// =============================================
+
+// ------------------- CONFIG -------------------
+
+// Output
+@output "hello.gif"
+
+// Terminal size
+@size 80x24                   // Width x Height in characters
+@font 16                      // Font size in pixels
+@padding 20                   // Padding around content
+
+// Timing
+@speed 50ms                   // Typing speed per character
+@start 500ms                  // Delay before starting
+@end 2s                       // Hold final frame
+@fps 10                       // Frames per second (for --terminal)
+
+// Appearance
+@title "hello"               // Window title
+@theme "mocha"                // mocha, latte, frappe, macchiato, dracula, nord, tokyo, gruvbox
+@cursor "block"               // block, bar, underline
+// @prompt "$ "               // Custom prompt (default: auto)
+// @bare                      // No window chrome
+
+// Corners
+@radius 10                    // Both inner & outer (0 = sharp)
+// @radius-outer 12           // Outer GIF edge only
+// @radius-inner 8            // Inner window only
+
+// Advanced
+@loop 0                       // 0 = infinite, 1 = once, N = N times
+@quality 2                    // 1 = fast, 2 = smooth, 3 = ultra
+
+// ------------------- SCRIPT -------------------
+// Syntax:
+//   -> "text"        Type text
+//   >>               Press Enter
+//   -> "text" >>     Type + Enter (shorthand)
+//   ~1s              Wait (500ms, 1s, 2.5s)
+//   // comment       Single-line comment
+//   /* comment */    Multi-line comment
+
+-> "echo Hello, hello!" >>
+~1s
+
+-> "python --version" >>
+~2s

@@ -1,0 +1,27 @@
+// =============================================
+// example.tg - termgif demo
+// Run with: termgif example
+// =============================================
+
+// ------------------- CONFIG -------------------
+@output "example.gif"
+@size 80x20
+@font 16
+@speed 60ms
+@title "termgif demo"
+@theme "mocha"
+@radius 10
+
+// ------------------- SCRIPT -------------------
+
+// Welcome message (works on all platforms)
+-> "echo Hello, termgif!" >>
+~1s
+
+// Show Python version (cross-platform)
+-> "python --version" >>
+~800ms
+
+// Show pip packages (cross-platform)
+-> "pip list" >>
+~2s

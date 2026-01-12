@@ -1,0 +1,17 @@
+// Terminal capture mode demo
+@output "terminal-demo.gif"
+@size 60x14
+@font 16
+@speed 50ms
+@fps 15
+@title "terminal capture"
+@theme "nord"
+@radius 10
+@quality 3
+@end 2s
+
+-> "echo 'Screen capturing your terminal!'" >>
+~1s
+
+-> "dir" >>
+~2s
