@@ -1,5 +1,9 @@
 # termgif
 
+[![PyPI version](https://img.shields.io/pypi/v/termgif)](https://pypi.org/project/termgif/)
+[![Python](https://img.shields.io/pypi/pyversions/termgif)](https://pypi.org/project/termgif/)
+[![License](https://img.shields.io/github/license/aayushadhikari7/termgif)](https://github.com/aayushadhikari7/termgif/blob/main/LICENSE)
+
 Dead simple terminal GIF recorder. Write a script, get a beautiful GIF.
 
 ![termgif demo](assets/demo.gif)
