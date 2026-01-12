@@ -6,7 +6,7 @@
 
 Dead simple terminal GIF recorder. Write a script, get a beautiful GIF.
 
-![termgif demo](assets/demo.gif)
+![termgif demo](https://raw.githubusercontent.com/aayushadhikari7/termgif/main/assets/demo.gif)
 
 ## Install
 
@@ -31,7 +31,7 @@ Runs real commands and captures the output:
 termgif demo
 ```
 
-![live mode](assets/live-demo.gif)
+![live mode](https://raw.githubusercontent.com/aayushadhikari7/termgif/main/assets/live-demo.gif)
 
 ### Simulated Mode
 
@@ -51,7 +51,7 @@ termgif demo --terminal
 termgif demo -t
 ```
 
-![terminal mode](assets/terminal-demo.gif)
+![terminal mode](https://raw.githubusercontent.com/aayushadhikari7/termgif/main/assets/terminal-demo.gif)
 
 ## Script Format (.tg)
 
