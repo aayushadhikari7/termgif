@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "termgif"
-version = "0.2.0"
+version = "0.2.1"
 description = "Dead simple terminal GIF recorder"
 readme = "README.md"
 requires-python = ">=3.11"

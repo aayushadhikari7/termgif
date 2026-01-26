@@ -1,5 +1,6 @@
 """CLI for termgif."""
 import sys
+import webbrowser
 from pathlib import Path
 import typer
 from rich.console import Console
@@ -10,63 +11,274 @@ from .recorder import record_script
 from .capture import record_live, record_terminal, HAS_CAPTURE
 
 console = Console()
+GITHUB_URL = "https://github.com/aayushadhikari7/termgif"
 
-BOILERPLATE = '''// =============================================
-// {name}.tg - termgif script
-// Run with: termgif {name}
-// =============================================
 
-// ------------------- CONFIG -------------------
+def _check_first_run():
+    """Check if this is the first run and show welcome message."""
+    marker = Path.home() / ".termgif_welcomed"
+    if not marker.exists():
+        console.print(Panel(
+            f"[bold cyan]Welcome to termgif![/]\n\n"
+            f"Dead simple terminal GIF recorder.\n\n"
+            f"[dim]Like it? Give us a star:[/] [link={GITHUB_URL}]{GITHUB_URL}[/link]",
+            title="termgif",
+            border_style="cyan"
+        ))
+        try:
+            webbrowser.open(GITHUB_URL)
+        except Exception:
+            pass  # Silently fail if browser can't open
+        marker.touch()
+        console.print()
 
-// Output
-@output "{name}.gif"
+BOILERPLATE = '''// ============================================================================
+//  {name}.tg - termgif recording script
+// ============================================================================
+//
+//  QUICK START:
+//    termgif {name}              Run commands & record to GIF
+//    termgif {name} --simulate   Preview without running commands
+//    termgif {name} --terminal   Screen-capture your actual terminal
+//
+//  DOCUMENTATION: https://github.com/aayushadhikari7/termgif
+//
+// ============================================================================
 
-// Terminal size
-@size 80x24                   // Width x Height in characters
-@font 16                      // Font size in pixels
-@padding 20                   // Padding around content
 
-// Timing
-@speed 50ms                   // Typing speed per character
-@start 500ms                  // Delay before starting
-@end 2s                       // Hold final frame
-@fps 10                       // Frames per second (for --terminal)
+// ============================= CONFIGURATION ================================
+//
+// All settings have sensible defaults. Uncomment and modify as needed!
+//
 
-// Appearance
-@title "{name}"               // Window title
-@theme "mocha"                // mocha, latte, frappe, macchiato, dracula, nord, tokyo, gruvbox
-@cursor "block"               // block, bar, underline
-// @prompt "$ "               // Custom prompt (default: auto)
-// @bare                      // No window chrome
+// -- Output --
+@output "{name}.gif"              // Output file path
 
-// Corners
-@radius 10                    // Both inner & outer (0 = sharp)
-// @radius-outer 12           // Outer GIF edge only
-// @radius-inner 8            // Inner window only
 
-// TUI apps
-// @native                    // Preserve TUI app's colors (don't apply theme)
+// -- Terminal Dimensions --
+@size 80x24                       // Width x Height in characters
+// @size 120x30                   // Wider terminal for more content
+// @size 60x20                    // Compact size
 
-// Advanced
-@loop 0                       // 0 = infinite, 1 = once, N = N times
-@quality 2                    // 1 = fast, 2 = smooth, 3 = ultra
+@font 16                          // Font size in pixels (affects GIF size)
+// @font 14                       // Smaller text, smaller GIF
+// @font 20                       // Larger text, larger GIF
 
-// ------------------- SCRIPT -------------------
-// Syntax:
-//   -> "text"        Type text
-//   >>               Press Enter
-//   -> "text" >>     Type + Enter (shorthand)
-//   ~1s              Wait (500ms, 1s, 2.5s)
-//   key "escape"     Press key (for TUI apps, --terminal mode)
-//   key "ctrl+c"     Key combo: ctrl/alt/shift + key
-//   // comment       Single-line comment
-//   /* comment */    Multi-line comment
+@padding 20                       // Padding around terminal content (px)
+// @padding 0                     // No padding (edge-to-edge)
+// @padding 40                    // Extra breathing room
 
--> "echo Hello, {name}!" >>
+
+// -- Timing --
+@speed 50ms                       // Typing speed per character
+// @speed 30ms                    // Faster typing
+// @speed 100ms                   // Slower, more dramatic typing
+
+@start 500ms                      // Delay before recording starts
+// @start 0ms                     // Start immediately
+// @start 1s                      // Longer pause before starting
+
+@end 2s                           // How long to hold the final frame
+// @end 500ms                     // Quick ending
+// @end 5s                        // Long pause on final frame
+
+@fps 10                           // Frames per second
+// @fps 15                        // Smoother animation (larger file)
+// @fps 5                         // Smaller file size
+
+
+// -- Appearance --
+@title "{name}"                   // Window title bar text
+// @title "My Awesome CLI"        // Custom title
+// @title ""                      // No title
+
+@theme "mocha"                    // Color theme (see all options below)
+// @theme "latte"                 // Light theme (Catppuccin Latte)
+// @theme "frappe"                // Medium dark (Catppuccin Frappe)
+// @theme "macchiato"             // Medium dark (Catppuccin Macchiato)
+// @theme "dracula"               // Dark purple
+// @theme "nord"                  // Arctic blue
+// @theme "tokyo"                 // Tokyo Night
+// @theme "gruvbox"               // Retro warm
+
+@cursor "block"                   // Cursor style
+// @cursor "bar"                  // Thin vertical bar |
+// @cursor "underline"            // Underline cursor _
+
+@radius 10                        // Corner radius (px), 0 = sharp corners
+// @radius 0                      // Sharp corners
+// @radius 20                     // More rounded
+
+
+// -- Advanced Options (uncomment to use) --
+
+// @prompt "$ "                   // Custom prompt (default: user@dir $)
+// @prompt ">>> "                 // Python-style prompt
+// @prompt "> "                   // Minimal prompt
+
+// @bare                          // Remove window chrome (no title bar/buttons)
+
+// @native                        // Preserve TUI app's original colors
+
+// @radius-outer 12               // Outer GIF corner radius (independent)
+// @radius-inner 8                // Inner window corner radius (independent)
+
+// @loop 0                        // Loop forever (default)
+// @loop 1                        // Play once, no loop
+// @loop 3                        // Loop 3 times then stop
+
+// @quality 2                     // Render quality (default: 2)
+// @quality 1                     // Fast render, lower quality
+// @quality 3                     // Ultra quality, slower render
+
+
+// ================================ SCRIPT ====================================
+//
+// SYNTAX QUICK REFERENCE:
+//
+//   -> "text"          Type text character by character
+//   >>                 Press Enter
+//   -> "text" >>       Type text and press Enter (shorthand)
+//   ~500ms             Wait for 500 milliseconds
+//   ~2s                Wait for 2 seconds
+//   ~1500              Wait for 1500ms (bare number = ms)
+//   key "escape"       Press a special key (for TUI apps)
+//   key "ctrl+c"       Press a key combination
+//
+// SPECIAL KEYS:
+//   Navigation:  up, down, left, right, home, end, pageup, pagedown
+//   Editing:     backspace, delete, tab, space
+//   Control:     escape, enter, return
+//   Function:    f1, f2, f3 ... f12
+//   Modifiers:   ctrl+<key>, alt+<key>, shift+<key>
+//
+// ============================================================================
+
+
+// -------------------- YOUR SCRIPT STARTS HERE --------------------
+
+// Simple echo command
+-> "echo Hello, World!" >>
 ~1s
 
--> "python --version" >>
+// List files
+-> "ls -la" >>
 ~2s
+
+
+// -------------------- MORE EXAMPLES (uncomment to try) --------------------
+
+/*
+// Multiple commands in sequence
+-> "pwd" >>
+~500ms
+-> "whoami" >>
+~500ms
+-> "date" >>
+~1s
+*/
+
+/*
+// Chain commands together
+-> "mkdir demo && cd demo && touch file.txt" >>
+~1s
+-> "ls" >>
+~1s
+*/
+
+/*
+// Show help output
+-> "python --help" >>
+~3s
+*/
+
+/*
+// Git workflow
+-> "git status" >>
+~1s
+-> "git add ." >>
+~500ms
+-> "git commit -m \\"Initial commit\\"" >>
+~1s
+-> "git log --oneline -3" >>
+~2s
+*/
+
+/*
+// Docker example
+-> "docker ps" >>
+~1s
+-> "docker images" >>
+~2s
+*/
+
+
+// -------------------- TUI APP EXAMPLES --------------------
+//
+// For TUI apps (vim, htop, fzf, etc.), use ONE of these approaches:
+//   1. Default mode + @native flag   (captures PTY output with colors)
+//   2. --terminal flag               (screen captures your actual terminal)
+//
+
+/*
+// VIM EXAMPLE
+// Run with: termgif {name} --native
+// Or with:  termgif {name} --terminal
+
+-> "vim hello.txt" >>
+~1s
+key "i"                           // Enter insert mode
+-> "Hello from Vim!"
+~500ms
+key "escape"                      // Back to normal mode
+-> ":wq" >>                       // Save and quit
+~1s
+*/
+
+/*
+// HTOP EXAMPLE
+// Run with: termgif {name} --native
+
+-> "htop" >>
+~2s
+key "F6"                          // Open sort menu
+~1s
+key "down"
+key "down"
+key "enter"
+~2s
+key "q"                           // Quit
+~500ms
+*/
+
+/*
+// FZF EXAMPLE
+// Run with: termgif {name} --terminal
+
+-> "ls | fzf" >>
+~1s
+-> "main"                         // Type to filter
+~500ms
+key "down"
+key "down"
+key "enter"                       // Select
+~1s
+*/
+
+/*
+// LAZYGIT EXAMPLE
+// Run with: termgif {name} --native
+
+-> "lazygit" >>
+~2s
+key "j"                           // Move down
+key "j"
+~500ms
+key "enter"                       // Open details
+~1s
+key "q"                           // Quit
+~500ms
+*/
 '''
 
 HELP_TEXT = """
@@ -125,7 +337,7 @@ HELP_TEXT = """
   termgif demo -s          [dim]# simulated (fake output)[/]
   termgif demo --terminal  [dim]# screen captures YOUR terminal[/]
 
-[dim]v{version}[/]
+[dim]v{version}[/]  |  github.com/aayushadhikari7/termgif [dim](star if useful!)[/]
 """
 
 SCRIPT_NOT_FOUND = """
@@ -206,6 +418,9 @@ def create(script_path: Path):
 def main():
     """Main entry point."""
     args = sys.argv[1:]
+
+    # Check for first run welcome
+    _check_first_run()
 
     # No arguments - show help
     if not args:
