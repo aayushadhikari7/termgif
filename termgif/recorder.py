@@ -2,7 +2,7 @@
 from pathlib import Path
 from PIL import Image
 
-from .tape import TapeConfig, TypeAction, EnterAction, SleepAction, parse_tape
+from .tape import TapeConfig, TypeAction, EnterAction, SleepAction, KeyAction, parse_tape
 from .tg_parser import parse_tg
 from .renderer import TerminalRenderer, TerminalStyle
 
@@ -60,6 +60,12 @@ class Recorder:
         elif isinstance(action, SleepAction):
             # Just hold the current frame
             self.capture_frame(action.ms)
+
+        elif isinstance(action, KeyAction):
+            # KeyAction is only meaningful in --terminal mode
+            # In simulated mode, we just pause briefly
+            print(f"[Note: 'key \"{action.key}\"' requires --terminal mode for TUI interaction]")
+            self.capture_frame(100)
 
     def run_tape(self, actions: list) -> None:
         """Run all actions from tape."""

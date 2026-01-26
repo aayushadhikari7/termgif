@@ -685,6 +685,12 @@ class LiveRecorder:
             elif isinstance(action, SleepAction):
                 self.capture_frame(action.ms)
 
+            elif isinstance(action, KeyAction):
+                # KeyAction is only meaningful in --terminal mode
+                # In live mode, we just pause briefly to simulate the key press
+                print(f"[Note: 'key \"{action.key}\"' requires --terminal mode for TUI interaction]")
+                self.capture_frame(100)
+
         self.capture_frame(self.config.end_delay)
 
     def save_gif(self, output_path: Path) -> None:
