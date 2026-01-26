@@ -465,6 +465,100 @@ def _type_text_linux(text: str) -> bool:
 
     return False
 
+
+# Store terminal window handle for focus management
+_terminal_hwnd = None
+
+
+def _get_terminal_hwnd():
+    """Get the terminal window handle (Windows only)."""
+    global _terminal_hwnd
+    if _terminal_hwnd is not None:
+        return _terminal_hwnd
+
+    if sys.platform != "win32":
+        return None
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+
+        # Try to get the console window first
+        kernel32.GetConsoleWindow.restype = wintypes.HWND
+        hwnd = kernel32.GetConsoleWindow()
+        if hwnd:
+            _terminal_hwnd = hwnd
+            return hwnd
+
+        # Fall back to foreground window
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        hwnd = user32.GetForegroundWindow()
+        _terminal_hwnd = hwnd
+        return hwnd
+    except Exception:
+        return None
+
+
+def focus_terminal():
+    """Ensure the terminal window has keyboard focus.
+
+    This is important for sending keystrokes to TUI applications.
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+
+            hwnd = _get_terminal_hwnd()
+            if hwnd:
+                # Bring window to foreground and set focus
+                user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+                user32.SetForegroundWindow.restype = wintypes.BOOL
+                user32.SetForegroundWindow(hwnd)
+
+                user32.SetFocus.argtypes = [wintypes.HWND]
+                user32.SetFocus.restype = wintypes.HWND
+                user32.SetFocus(hwnd)
+
+                time.sleep(0.05)  # Small delay to let focus settle
+                return True
+        except Exception:
+            pass
+
+    elif sys.platform == "darwin":
+        # On macOS, the terminal should already have focus since we're running in it
+        # But we can try to activate the frontmost app
+        try:
+            script = '''
+            tell application "System Events"
+                set frontApp to first application process whose frontmost is true
+                set frontmost of frontApp to true
+            end tell
+            '''
+            subprocess.run(["osascript", "-e", script], capture_output=True, timeout=2)
+            return True
+        except Exception:
+            pass
+
+    else:  # Linux
+        # Try xdotool to focus the active window
+        try:
+            result = subprocess.run(
+                ["xdotool", "getactivewindow", "windowfocus", "--sync"],
+                capture_output=True, timeout=2
+            )
+            if result.returncode == 0:
+                return True
+        except Exception:
+            pass
+
+    return False
+
 # Screen capture support - use PIL's ImageGrab (built-in, more reliable)
 HAS_CAPTURE = True
 try:
@@ -1041,6 +1135,9 @@ class TerminalRecorder:
         Handles TypeAction, EnterAction, SleepAction, and KeyAction.
         Commands are executed non-blocking to support TUI applications.
         """
+        # Store terminal handle for focus management (Windows)
+        _get_terminal_hwnd()
+
         # Clear terminal for clean recording
         if sys.platform == "win32":
             os.system("cls")
@@ -1053,6 +1150,9 @@ class TerminalRecorder:
         current_cmd = ""  # Accumulate typed text for command execution
 
         for action in actions:
+            # Ensure terminal has focus before any input
+            focus_terminal()
+
             if isinstance(action, TypeAction):
                 # Type text character by character using keyboard simulation
                 for char in action.text:
@@ -1074,22 +1174,23 @@ class TerminalRecorder:
                 current_cmd = ""  # Reset for next command
 
                 # Give TUI apps time to initialize
-                time.sleep(0.2)
-                self._capture_frames_for_duration(200)
+                time.sleep(0.5)
+                self._capture_frames_for_duration(500)
 
             elif isinstance(action, SleepAction):
                 # Capture frames during the sleep period
                 self._capture_frames_for_duration(action.ms)
 
             elif isinstance(action, KeyAction):
-                # Send special key (for TUI interaction)
-                send_key(action.key)
+                # Ensure focus and send special key (for TUI interaction)
+                focus_terminal()
                 time.sleep(0.05)
+                send_key(action.key)
+                time.sleep(0.1)
                 self.capture_frame()
 
                 # Give the TUI time to respond
-                time.sleep(0.1)
-                self._capture_frames_for_duration(100)
+                self._capture_frames_for_duration(150)
 
         # Final frames
         self._capture_frames_for_duration(500)
