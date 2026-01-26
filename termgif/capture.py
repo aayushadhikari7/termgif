@@ -1162,20 +1162,21 @@ class TerminalRecorder:
                 current_cmd += action.text
 
             elif isinstance(action, EnterAction):
-                # Send enter key
+                # Send enter key - the terminal shell will execute the typed command
                 send_key("enter")
-                time.sleep(0.05)
+                time.sleep(0.1)
                 self.capture_frame()
 
-                # Start command execution non-blocking (for TUI apps)
-                if current_cmd and not current_cmd.startswith("#"):
-                    self._start_command(current_cmd)
+                # NOTE: We do NOT use subprocess to run the command!
+                # The keyboard simulation already typed the command and pressed enter,
+                # so the terminal shell will execute it naturally.
+                # This is what allows TUI apps to work properly.
 
                 current_cmd = ""  # Reset for next command
 
-                # Give TUI apps time to initialize
-                time.sleep(0.5)
-                self._capture_frames_for_duration(500)
+                # Give commands/TUI apps time to start and render
+                time.sleep(0.3)
+                self._capture_frames_for_duration(300)
 
             elif isinstance(action, SleepAction):
                 # Capture frames during the sleep period
@@ -1194,9 +1195,6 @@ class TerminalRecorder:
 
         # Final frames
         self._capture_frames_for_duration(500)
-
-        # Clean up any running process
-        self._cleanup_process()
 
     def _start_command(self, cmd: str) -> None:
         """Start a command without waiting for it to complete.
