@@ -54,6 +54,8 @@ BOILERPLATE = '''// =============================================
 //   >>               Press Enter
 //   -> "text" >>     Type + Enter (shorthand)
 //   ~1s              Wait (500ms, 1s, 2.5s)
+//   key "escape"     Press key (for TUI apps, --terminal mode)
+//   key "ctrl+c"     Key combo: ctrl/alt/shift + key
 //   // comment       Single-line comment
 //   /* comment */    Multi-line comment
 
@@ -105,6 +107,8 @@ HELP_TEXT = """
   >>                       [dim]# press enter[/]
   -> "text" >>             [dim]# type + enter[/]
   ~1s                      [dim]# wait (500ms, 1s, 2.5s)[/]
+  key "escape"             [dim]# press key (--terminal only)[/]
+  key "ctrl+c"             [dim]# key combo (--terminal only)[/]
   // comment               [dim]# single-line comment[/]
 
 [bold]Themes:[/]
