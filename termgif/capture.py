@@ -91,9 +91,21 @@ def _send_key_windows(key: str, modifiers: list[str]) -> bool:
 
         user32 = ctypes.windll.user32
 
-        # Input structure for SendInput
+        # Constants
         INPUT_KEYBOARD = 1
         KEYEVENTF_KEYUP = 0x0002
+        KEYEVENTF_SCANCODE = 0x0008
+
+        # Properly define the INPUT structure with union (required for 64-bit)
+        class MOUSEINPUT(ctypes.Structure):
+            _fields_ = [
+                ("dx", wintypes.LONG),
+                ("dy", wintypes.LONG),
+                ("mouseData", wintypes.DWORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+            ]
 
         class KEYBDINPUT(ctypes.Structure):
             _fields_ = [
@@ -104,18 +116,48 @@ def _send_key_windows(key: str, modifiers: list[str]) -> bool:
                 ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
             ]
 
+        class HARDWAREINPUT(ctypes.Structure):
+            _fields_ = [
+                ("uMsg", wintypes.DWORD),
+                ("wParamL", wintypes.WORD),
+                ("wParamH", wintypes.WORD),
+            ]
+
+        class INPUT_UNION(ctypes.Union):
+            _fields_ = [
+                ("mi", MOUSEINPUT),
+                ("ki", KEYBDINPUT),
+                ("hi", HARDWAREINPUT),
+            ]
+
         class INPUT(ctypes.Structure):
             _fields_ = [
                 ("type", wintypes.DWORD),
-                ("ki", KEYBDINPUT),
+                ("union", INPUT_UNION),
             ]
 
+        # Set up SendInput function signature
+        user32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
+        user32.SendInput.restype = wintypes.UINT
+
         def press_key(vk_code: int) -> None:
-            inp = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(wVk=vk_code))
+            inp = INPUT()
+            inp.type = INPUT_KEYBOARD
+            inp.union.ki.wVk = vk_code
+            inp.union.ki.wScan = 0
+            inp.union.ki.dwFlags = 0
+            inp.union.ki.time = 0
+            inp.union.ki.dwExtraInfo = None
             user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
         def release_key(vk_code: int) -> None:
-            inp = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(wVk=vk_code, dwFlags=KEYEVENTF_KEYUP))
+            inp = INPUT()
+            inp.type = INPUT_KEYBOARD
+            inp.union.ki.wVk = vk_code
+            inp.union.ki.wScan = 0
+            inp.union.ki.dwFlags = KEYEVENTF_KEYUP
+            inp.union.ki.time = 0
+            inp.union.ki.dwExtraInfo = None
             user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
         # Get key code
@@ -131,79 +173,137 @@ def _send_key_windows(key: str, modifiers: list[str]) -> bool:
         for mod in modifiers:
             if mod in _WIN_VK_CODES:
                 press_key(_WIN_VK_CODES[mod])
+                time.sleep(0.01)
 
         # Press and release the key
         press_key(vk_code)
-        time.sleep(0.01)
+        time.sleep(0.02)
         release_key(vk_code)
 
         # Release modifiers (in reverse order)
         for mod in reversed(modifiers):
             if mod in _WIN_VK_CODES:
+                time.sleep(0.01)
                 release_key(_WIN_VK_CODES[mod])
 
         return True
-    except Exception:
+    except Exception as e:
         return False
 
 
 def _send_key_macos(key: str, modifiers: list[str]) -> bool:
-    """Send keystroke on macOS using osascript."""
+    """Send keystroke on macOS using osascript (AppleScript)."""
     try:
         # Build modifier string for AppleScript
-        mod_str = ""
+        mod_parts = []
         if "ctrl" in modifiers or "control" in modifiers:
-            mod_str += "control down, "
+            mod_parts.append("control down")
         if "alt" in modifiers or "option" in modifiers:
-            mod_str += "option down, "
+            mod_parts.append("option down")
         if "shift" in modifiers:
-            mod_str += "shift down, "
+            mod_parts.append("shift down")
         if "cmd" in modifiers or "command" in modifiers:
-            mod_str += "command down, "
+            mod_parts.append("command down")
 
-        if mod_str:
-            mod_str = " using {" + mod_str.rstrip(", ") + "}"
+        mod_str = ""
+        if mod_parts:
+            mod_str = " using {" + ", ".join(mod_parts) + "}"
 
         # Get key code or use character
         if key in _MACOS_KEY_CODES:
             script = f'tell application "System Events" to key code {_MACOS_KEY_CODES[key]}{mod_str}'
         elif len(key) == 1:
-            script = f'tell application "System Events" to keystroke "{key}"{mod_str}'
+            # Escape special characters for AppleScript string
+            escaped_key = key.replace("\\", "\\\\").replace('"', '\\"')
+            script = f'tell application "System Events" to keystroke "{escaped_key}"{mod_str}'
         else:
             return False
 
-        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
-        return True
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, timeout=5
+        )
+        return result.returncode == 0
     except Exception:
         return False
 
 
 def _send_key_linux(key: str, modifiers: list[str]) -> bool:
-    """Send keystroke on Linux using xdotool."""
-    try:
-        # Build key combination for xdotool
-        key_combo = ""
-        if "ctrl" in modifiers or "control" in modifiers:
-            key_combo += "ctrl+"
-        if "alt" in modifiers:
-            key_combo += "alt+"
-        if "shift" in modifiers:
-            key_combo += "shift+"
-        if "super" in modifiers or "meta" in modifiers:
-            key_combo += "super+"
+    """Send keystroke on Linux using xdotool (X11) or ydotool (Wayland)."""
+    # Build key combination
+    key_combo = ""
+    if "ctrl" in modifiers or "control" in modifiers:
+        key_combo += "ctrl+"
+    if "alt" in modifiers:
+        key_combo += "alt+"
+    if "shift" in modifiers:
+        key_combo += "shift+"
+    if "super" in modifiers or "meta" in modifiers:
+        key_combo += "super+"
 
-        # Get xdotool key name
-        if key in _XDOTOOL_KEYS:
-            key_combo += _XDOTOOL_KEYS[key]
-        elif len(key) == 1:
-            key_combo += key
-        else:
-            return False
-
-        subprocess.run(["xdotool", "key", key_combo], capture_output=True, timeout=5)
-        return True
-    except Exception:
+    # Get key name
+    if key in _XDOTOOL_KEYS:
+        key_name = _XDOTOOL_KEYS[key]
+    elif len(key) == 1:
+        key_name = key
+    else:
         return False
+
+    key_combo += key_name
+
+    # Try xdotool first (X11)
+    try:
+        result = subprocess.run(
+            ["xdotool", "key", key_combo],
+            capture_output=True, timeout=5
+        )
+        if result.returncode == 0:
+            return True
+    except FileNotFoundError:
+        pass  # xdotool not installed, try ydotool
+    except Exception:
+        pass
+
+    # Try ydotool (Wayland) - uses different key names
+    try:
+        # ydotool uses different syntax: ydotool key <keycode>
+        # For simplicity, use type for characters and key for special keys
+        ydotool_key = key_name.lower()
+        result = subprocess.run(
+            ["ydotool", "key", ydotool_key],
+            capture_output=True, timeout=5
+        )
+        if result.returncode == 0:
+            return True
+    except FileNotFoundError:
+        pass  # ydotool not installed
+    except Exception:
+        pass
+
+    # Try wtype (another Wayland option)
+    try:
+        if len(key) == 1 and not modifiers:
+            result = subprocess.run(
+                ["wtype", key],
+                capture_output=True, timeout=5
+            )
+        else:
+            # wtype uses -k for special keys, -M for modifiers
+            cmd = ["wtype"]
+            for mod in modifiers:
+                cmd.extend(["-M", mod])
+            cmd.extend(["-k", key_name])
+            for mod in modifiers:
+                cmd.extend(["-m", mod])  # release modifier
+            result = subprocess.run(cmd, capture_output=True, timeout=5)
+        if result.returncode == 0:
+            return True
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    return False
 
 
 def type_text(text: str) -> bool:
@@ -235,6 +335,17 @@ def _type_text_windows(text: str) -> bool:
         KEYEVENTF_UNICODE = 0x0004
         KEYEVENTF_KEYUP = 0x0002
 
+        # Properly define the INPUT structure with union (required for 64-bit)
+        class MOUSEINPUT(ctypes.Structure):
+            _fields_ = [
+                ("dx", wintypes.LONG),
+                ("dy", wintypes.LONG),
+                ("mouseData", wintypes.DWORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+            ]
+
         class KEYBDINPUT(ctypes.Structure):
             _fields_ = [
                 ("wVk", wintypes.WORD),
@@ -244,22 +355,49 @@ def _type_text_windows(text: str) -> bool:
                 ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
             ]
 
+        class HARDWAREINPUT(ctypes.Structure):
+            _fields_ = [
+                ("uMsg", wintypes.DWORD),
+                ("wParamL", wintypes.WORD),
+                ("wParamH", wintypes.WORD),
+            ]
+
+        class INPUT_UNION(ctypes.Union):
+            _fields_ = [
+                ("mi", MOUSEINPUT),
+                ("ki", KEYBDINPUT),
+                ("hi", HARDWAREINPUT),
+            ]
+
         class INPUT(ctypes.Structure):
             _fields_ = [
                 ("type", wintypes.DWORD),
-                ("ki", KEYBDINPUT),
+                ("union", INPUT_UNION),
             ]
 
+        # Set up SendInput function signature
+        user32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
+        user32.SendInput.restype = wintypes.UINT
+
         for char in text:
-            # Use Unicode input for each character
-            inp_down = INPUT(
-                type=INPUT_KEYBOARD,
-                ki=KEYBDINPUT(wVk=0, wScan=ord(char), dwFlags=KEYEVENTF_UNICODE)
-            )
-            inp_up = INPUT(
-                type=INPUT_KEYBOARD,
-                ki=KEYBDINPUT(wVk=0, wScan=ord(char), dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)
-            )
+            # Key down with Unicode
+            inp_down = INPUT()
+            inp_down.type = INPUT_KEYBOARD
+            inp_down.union.ki.wVk = 0
+            inp_down.union.ki.wScan = ord(char)
+            inp_down.union.ki.dwFlags = KEYEVENTF_UNICODE
+            inp_down.union.ki.time = 0
+            inp_down.union.ki.dwExtraInfo = None
+
+            # Key up with Unicode
+            inp_up = INPUT()
+            inp_up.type = INPUT_KEYBOARD
+            inp_up.union.ki.wVk = 0
+            inp_up.union.ki.wScan = ord(char)
+            inp_up.union.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+            inp_up.union.ki.time = 0
+            inp_up.union.ki.dwExtraInfo = None
+
             user32.SendInput(1, ctypes.byref(inp_down), ctypes.sizeof(INPUT))
             user32.SendInput(1, ctypes.byref(inp_up), ctypes.sizeof(INPUT))
             time.sleep(0.01)  # Small delay between characters
@@ -270,24 +408,62 @@ def _type_text_windows(text: str) -> bool:
 
 
 def _type_text_macos(text: str) -> bool:
-    """Type text on macOS using osascript."""
+    """Type text on macOS using osascript (AppleScript)."""
     try:
-        # Escape special characters for AppleScript
+        # Escape special characters for AppleScript string
         escaped = text.replace("\\", "\\\\").replace('"', '\\"')
         script = f'tell application "System Events" to keystroke "{escaped}"'
-        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=10)
-        return True
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, timeout=10
+        )
+        return result.returncode == 0
     except Exception:
         return False
 
 
 def _type_text_linux(text: str) -> bool:
-    """Type text on Linux using xdotool."""
+    """Type text on Linux using xdotool (X11) or ydotool/wtype (Wayland)."""
+    # Try xdotool first (X11)
     try:
-        subprocess.run(["xdotool", "type", "--", text], capture_output=True, timeout=10)
-        return True
+        result = subprocess.run(
+            ["xdotool", "type", "--", text],
+            capture_output=True, timeout=10
+        )
+        if result.returncode == 0:
+            return True
+    except FileNotFoundError:
+        pass
     except Exception:
-        return False
+        pass
+
+    # Try ydotool (Wayland)
+    try:
+        result = subprocess.run(
+            ["ydotool", "type", "--", text],
+            capture_output=True, timeout=10
+        )
+        if result.returncode == 0:
+            return True
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    # Try wtype (Wayland)
+    try:
+        result = subprocess.run(
+            ["wtype", text],
+            capture_output=True, timeout=10
+        )
+        if result.returncode == 0:
+            return True
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    return False
 
 # Screen capture support - use PIL's ImageGrab (built-in, more reliable)
 HAS_CAPTURE = True
