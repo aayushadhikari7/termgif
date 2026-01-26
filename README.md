@@ -53,6 +53,37 @@ termgif demo -t
 
 ![terminal mode](https://raw.githubusercontent.com/aayushadhikari7/termgif/main/assets/terminal-demo.gif)
 
+### TUI App Support
+
+Record interactive TUI apps like `vim`, `htop`, `fzf`, `lazygit`, etc:
+
+```
+// tui-demo.tg
+@output "vim-demo.gif"
+
+-> "vim hello.txt" >>
+~1s
+
+key "i"                    // enter insert mode
+-> "Hello from vim!"
+key "escape"
+-> ":wq" >>
+~500ms
+```
+
+Use `--native` to preserve the TUI app's own colors:
+
+```bash
+termgif tui-demo --native
+termgif tui-demo -n
+```
+
+For Windows TUI support, install pywinpty:
+
+```bash
+pip install pywinpty
+```
+
 ## Script Format (.tg)
 
 ```
@@ -99,6 +130,7 @@ termgif demo -t
 | `@cursor "style"` | block / bar / underline | `block` |
 | `@prompt "$ "` | Custom prompt | auto |
 | `@bare` | No window chrome | off |
+| `@native` | Preserve TUI app colors | off |
 
 ### Corners
 
@@ -123,8 +155,18 @@ termgif demo -t
 | `>>` | Press enter |
 | `-> "text" >>` | Type + enter |
 | `~500ms` | Wait (ms or s) |
+| `key "escape"` | Press special key |
+| `key "ctrl+c"` | Key combo |
 | `// comment` | Single-line comment |
 | `/* ... */` | Multi-line comment |
+
+### Supported Keys
+
+Navigation: `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`
+Editing: `backspace`, `delete`, `tab`, `space`
+Control: `escape`, `enter`, `return`
+Function: `f1`-`f12`
+Modifiers: `ctrl+<key>`, `alt+<key>`
 
 ## Themes
 
@@ -149,6 +191,7 @@ Options:
   -b, --bare             No window chrome
   -s, --simulate         Simulated mode (no real commands)
   -t, --terminal         Terminal capture mode
+  -n, --native           Preserve TUI app's native colors
   -v, --version          Show version
   -h, --help             Show help
 ```
@@ -183,10 +226,11 @@ termgif showcase
 ## Features
 
 - **Beautiful output** - macOS-style window chrome, traffic lights, shadows
+- **TUI support** - Record vim, htop, fzf, lazygit, and more
 - **8 themes** - Catppuccin, Dracula, Nord, Tokyo Night, Gruvbox
 - **3 modes** - Live commands, simulated, or screen capture
+- **Native colors** - Preserve TUI app's own color scheme
 - **Rounded corners** - Independent inner/outer radius
-- **Pure Python** - No FFmpeg or browser automation
 - **Cross-platform** - Windows, macOS, Linux
 
 ## License
