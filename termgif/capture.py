@@ -10,6 +10,7 @@ import cv2
 
 from .renderer import TerminalRenderer, TerminalStyle
 from .tape import TapeConfig, TypeAction, EnterAction, SleepAction, KeyAction
+from .pty import PTYRunner, HAS_PTY
 
 
 # =============================================================================
@@ -573,7 +574,17 @@ except Exception:
 # =============================================================================
 
 class LiveRecorder:
-    """Records real command execution with our renderer."""
+    """Records real command execution with our renderer.
+
+    Supports both regular commands (via subprocess) and TUI apps (via PTY).
+    """
+
+    # Known TUI/interactive commands that need PTY
+    TUI_COMMANDS = {
+        "vim", "nvim", "nano", "emacs", "vi", "less", "more", "top", "htop",
+        "btop", "man", "fzf", "lazygit", "lazydocker", "tig", "ranger",
+        "mc", "ncdu", "nnn", "lf", "vifm", "tmux", "screen", "depviz"
+    }
 
     def __init__(self, config: TapeConfig):
         self.config = config
@@ -598,14 +609,71 @@ class LiveRecorder:
         self.frames: list[Image.Image] = []
         self.frame_durations: list[int] = []
 
+        # PTY runner for TUI apps
+        self.pty_runner: PTYRunner | None = None
+
     def capture_frame(self, duration_ms: int = 100) -> None:
         """Capture current terminal state as a frame."""
         frame = self.renderer.render()
         self.frames.append(frame)
         self.frame_durations.append(duration_ms)
 
+    def _is_tui_command(self, cmd: str) -> bool:
+        """Check if command is a known TUI app."""
+        cmd_name = cmd.split()[0].lower() if cmd.split() else ""
+        return cmd_name in self.TUI_COMMANDS
+
+    def _render_pty_screen(self) -> None:
+        """Render PTY screen state to our renderer."""
+        if not self.pty_runner:
+            return
+
+        # Get screen from PTY emulator
+        screen = self.pty_runner.get_screen()
+
+        # Clear renderer and add PTY screen lines
+        self.renderer.state.lines = []
+        for row in screen:
+            line = ''.join(cell.char for cell in row).rstrip()
+            self.renderer.state.lines.append(line)
+
+        # Position cursor at end
+        self.renderer.state.current_line = ""
+
+    def _capture_pty_frames(self, duration_ms: int, interval_ms: int = 50) -> None:
+        """Capture frames from PTY during a duration."""
+        frames_needed = max(1, duration_ms // interval_ms)
+        for _ in range(frames_needed):
+            self._render_pty_screen()
+            self.capture_frame(interval_ms)
+            time.sleep(interval_ms / 1000)
+
+    def start_tui(self, cmd: str) -> bool:
+        """Start a TUI app in PTY."""
+        self.pty_runner = PTYRunner(
+            width=self.config.width,
+            height=self.config.height
+        )
+        return self.pty_runner.start(cmd)
+
+    def stop_tui(self) -> None:
+        """Stop running TUI app."""
+        if self.pty_runner:
+            self.pty_runner.stop()
+            self.pty_runner = None
+
+    def send_tui_key(self, key: str) -> None:
+        """Send key to TUI app."""
+        if self.pty_runner:
+            self.pty_runner.send_key(key)
+
+    def send_tui_text(self, text: str) -> None:
+        """Send text to TUI app."""
+        if self.pty_runner:
+            self.pty_runner.send_input(text)
+
     def execute_command(self, cmd: str) -> str:
-        """Execute a real command and return output."""
+        """Execute a regular (non-TUI) command and return output."""
         if not cmd or cmd.startswith("#"):
             return ""
 
@@ -621,18 +689,18 @@ class LiveRecorder:
                 shell=True,
                 capture_output=True,
                 text=True,
-                timeout=60,  # Longer timeout for CLI tools
+                timeout=10,
                 cwd=Path.cwd(),
                 env=env,
                 encoding='utf-8',
-                errors='replace',  # Handle special characters gracefully
+                errors='replace',
             )
             output = result.stdout
             if result.stderr and result.returncode != 0:
                 output += result.stderr
             return output.rstrip()
         except subprocess.TimeoutExpired:
-            return "[Command timed out after 60s]"
+            return f"[Command timed out]"
         except Exception as e:
             return f"[Error: {e}]"
 
@@ -664,32 +732,98 @@ class LiveRecorder:
         self.capture_frame(100)
 
     def run_actions(self, actions: list) -> None:
-        """Run all actions with real command execution."""
+        """Run all actions with real command execution.
+
+        Supports both regular commands and TUI apps (via PTY).
+        """
         self.capture_frame(self.config.start_delay)
+
+        in_tui_mode = False
+        current_cmd = ""
 
         for action in actions:
             if isinstance(action, TypeAction):
-                for char in action.text:
-                    self.renderer.type_char(char)
-                    self.capture_frame(self.config.typing_speed_ms)
+                if in_tui_mode:
+                    # In TUI mode, send text to PTY
+                    for char in action.text:
+                        self.send_tui_text(char)
+                        time.sleep(self.config.typing_speed_ms / 1000)
+                        self._render_pty_screen()
+                        self.capture_frame(self.config.typing_speed_ms)
+                else:
+                    # Normal mode - render typing
+                    for char in action.text:
+                        self.renderer.type_char(char)
+                        self.capture_frame(self.config.typing_speed_ms)
+                    current_cmd += action.text
 
             elif isinstance(action, EnterAction):
-                cmd = self.renderer.press_enter()
-                self.capture_frame(100)
+                if in_tui_mode:
+                    # In TUI mode, send enter to PTY
+                    self.send_tui_key("enter")
+                    time.sleep(0.1)
+                    self._render_pty_screen()
+                    self.capture_frame(100)
+                else:
+                    # Check if this command is a TUI app
+                    cmd = self.renderer.press_enter()
+                    self.capture_frame(100)
 
-                if cmd and not cmd.startswith("#"):
-                    output = self.execute_command(cmd)
-                    # Animate output line by line for smooth scrolling
-                    self._add_output_animated(output)
+                    if cmd and not cmd.startswith("#"):
+                        if self._is_tui_command(cmd):
+                            # TUI apps need PTY support
+                            if not HAS_PTY:
+                                # Windows doesn't have PTY - show helpful message
+                                self.renderer.state.lines.append(f"[TUI app detected: {cmd.split()[0]}]")
+                                self.renderer.state.lines.append("")
+                                self.renderer.state.lines.append("TUI apps require --terminal mode on Windows:")
+                                self.renderer.state.lines.append(f"  termgif script.tg --terminal")
+                                self.renderer.state.lines.append("")
+                                self.renderer.state.current_line = self.renderer.state.prompt
+                                self.capture_frame(2000)
+                            elif self.start_tui(cmd):
+                                # Start TUI mode with PTY (Unix)
+                                in_tui_mode = True
+                                # Wait for TUI to initialize
+                                time.sleep(0.5)
+                                self._capture_pty_frames(500)
+                            else:
+                                # PTY failed, show error
+                                self.renderer.state.lines.append(f"[Failed to start TUI: {cmd}]")
+                                self.renderer.state.lines.append("")
+                                self.renderer.state.current_line = self.renderer.state.prompt
+                                self.capture_frame(100)
+                        else:
+                            # Regular command
+                            output = self.execute_command(cmd)
+                            self._add_output_animated(output)
+
+                    current_cmd = ""
 
             elif isinstance(action, SleepAction):
-                self.capture_frame(action.ms)
+                if in_tui_mode:
+                    # Capture PTY frames during sleep
+                    self._capture_pty_frames(action.ms)
+                else:
+                    self.capture_frame(action.ms)
 
             elif isinstance(action, KeyAction):
-                # KeyAction is only meaningful in --terminal mode
-                # In live mode, we just pause briefly to simulate the key press
-                print(f"[Note: 'key \"{action.key}\"' requires --terminal mode for TUI interaction]")
-                self.capture_frame(100)
+                if in_tui_mode:
+                    # Send key to TUI
+                    self.send_tui_key(action.key)
+                    time.sleep(0.1)
+                    self._render_pty_screen()
+                    self.capture_frame(100)
+                    # Give TUI time to respond
+                    self._capture_pty_frames(100)
+                else:
+                    # Not in TUI mode - key action doesn't do much
+                    print(f"[Note: 'key \"{action.key}\"' - no TUI running, ignoring]")
+                    self.capture_frame(100)
+
+        # Cleanup TUI if still running
+        if in_tui_mode:
+            self.stop_tui()
 
         self.capture_frame(self.config.end_delay)
 
