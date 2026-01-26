@@ -471,12 +471,8 @@ def _type_text_linux(text: str) -> bool:
 _terminal_hwnd = None
 
 
-def _get_terminal_hwnd():
-    """Get the terminal window handle (Windows only)."""
-    global _terminal_hwnd
-    if _terminal_hwnd is not None:
-        return _terminal_hwnd
-
+def _find_terminal_hwnd():
+    """Find the terminal window handle using multiple strategies (Windows only)."""
     if sys.platform != "win32":
         return None
 
@@ -487,20 +483,108 @@ def _get_terminal_hwnd():
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
 
-        # Try to get the console window first
+        # Strategy 1: GetConsoleWindow (works for cmd.exe, PowerShell legacy)
         kernel32.GetConsoleWindow.restype = wintypes.HWND
         hwnd = kernel32.GetConsoleWindow()
         if hwnd:
-            _terminal_hwnd = hwnd
             return hwnd
 
-        # Fall back to foreground window
+        # Strategy 2: Find parent process window (for Windows Terminal, etc.)
+        try:
+            kernel32.GetCurrentProcessId.restype = wintypes.DWORD
+            import ctypes.wintypes as wt
+
+            TH32CS_SNAPPROCESS = 0x00000002
+
+            class PROCESSENTRY32(ctypes.Structure):
+                _fields_ = [
+                    ("dwSize", wt.DWORD),
+                    ("cntUsage", wt.DWORD),
+                    ("th32ProcessID", wt.DWORD),
+                    ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+                    ("th32ModuleID", wt.DWORD),
+                    ("cntThreads", wt.DWORD),
+                    ("th32ParentProcessID", wt.DWORD),
+                    ("pcPriClassBase", ctypes.c_long),
+                    ("dwFlags", wt.DWORD),
+                    ("szExeFile", ctypes.c_char * 260),
+                ]
+
+            kernel32.CreateToolhelp32Snapshot.restype = wt.HANDLE
+            kernel32.Process32First.argtypes = [wt.HANDLE, ctypes.POINTER(PROCESSENTRY32)]
+            kernel32.Process32Next.argtypes = [wt.HANDLE, ctypes.POINTER(PROCESSENTRY32)]
+
+            current_pid = kernel32.GetCurrentProcessId()
+            snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+
+            if snapshot:
+                pe = PROCESSENTRY32()
+                pe.dwSize = ctypes.sizeof(PROCESSENTRY32)
+
+                parent_pid = None
+                if kernel32.Process32First(snapshot, ctypes.byref(pe)):
+                    while True:
+                        if pe.th32ProcessID == current_pid:
+                            parent_pid = pe.th32ParentProcessID
+                            break
+                        if not kernel32.Process32Next(snapshot, ctypes.byref(pe)):
+                            break
+
+                kernel32.CloseHandle(snapshot)
+
+                if parent_pid:
+                    # Find windows belonging to parent process
+                    user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
+                    user32.GetWindowThreadProcessId.restype = wt.DWORD
+                    user32.IsWindowVisible.argtypes = [wt.HWND]
+                    user32.IsWindowVisible.restype = wt.BOOL
+
+                    found_hwnd = None
+
+                    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+                    def enum_callback(hwnd, lparam):
+                        nonlocal found_hwnd
+                        pid = wt.DWORD()
+                        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                        if pid.value == parent_pid and user32.IsWindowVisible(hwnd):
+                            found_hwnd = hwnd
+                            return False  # Stop enumeration
+                        return True
+
+                    user32.EnumWindows(enum_callback, 0)
+
+                    if found_hwnd:
+                        return found_hwnd
+        except Exception:
+            pass
+
+        # Strategy 3: Foreground window (last resort)
         user32.GetForegroundWindow.restype = wintypes.HWND
         hwnd = user32.GetForegroundWindow()
-        _terminal_hwnd = hwnd
         return hwnd
+
     except Exception:
         return None
+
+
+def _get_terminal_hwnd(force_refresh: bool = False):
+    """Get the terminal window handle (Windows only).
+
+    Args:
+        force_refresh: If True, re-detect the window instead of using cached value.
+    """
+    global _terminal_hwnd
+    if _terminal_hwnd is not None and not force_refresh:
+        return _terminal_hwnd
+
+    _terminal_hwnd = _find_terminal_hwnd()
+    return _terminal_hwnd
+
+
+def _reset_terminal_hwnd():
+    """Reset the cached terminal window handle."""
+    global _terminal_hwnd
+    _terminal_hwnd = None
 
 
 def focus_terminal():
@@ -1240,6 +1324,13 @@ class TerminalRecorder:
     and keyboard simulation for interactive input.
     """
 
+    # Known TUI/interactive commands that need non-blocking execution
+    TUI_COMMANDS = {
+        "vim", "nvim", "nano", "emacs", "vi", "less", "more", "top", "htop",
+        "btop", "man", "fzf", "lazygit", "lazydocker", "tig", "ranger",
+        "mc", "ncdu", "nnn", "lf", "vifm", "tmux", "screen", "depviz"
+    }
+
     def __init__(self, output: str = "output.gif", fps: int = 10, radius: int = 0,
                  typing_speed_ms: int = 50):
         self.output = Path(output)
@@ -1345,11 +1436,10 @@ class TerminalRecorder:
         """Run actions in the terminal and capture frames.
 
         Handles TypeAction, EnterAction, SleepAction, and KeyAction.
-        Commands are executed non-blocking to support TUI applications.
-        """
-        # Store terminal handle for focus management (Windows)
-        _get_terminal_hwnd()
 
+        Uses print() for typing (reliable, same terminal) and os.system() for
+        commands. KeyAction uses keyboard simulation for TUI interaction.
+        """
         # Clear terminal for clean recording
         if sys.platform == "win32":
             os.system("cls")
@@ -1362,40 +1452,46 @@ class TerminalRecorder:
         current_cmd = ""  # Accumulate typed text for command execution
 
         for action in actions:
-            # Ensure terminal has focus before any input
-            focus_terminal()
-
             if isinstance(action, TypeAction):
-                # Type text character by character using keyboard simulation
+                # Type text character by character using print (same terminal)
                 for char in action.text:
-                    type_text(char)
+                    print(char, end="", flush=True)
                     time.sleep(typing_speed_ms / 1000)
                     self.capture_frame()
                 current_cmd += action.text
 
             elif isinstance(action, EnterAction):
-                # Send enter key - the terminal shell will execute the typed command
-                send_key("enter")
-                time.sleep(0.1)
+                # Print newline and execute command
+                print(flush=True)
                 self.capture_frame()
 
-                # NOTE: We do NOT use subprocess to run the command!
-                # The keyboard simulation already typed the command and pressed enter,
-                # so the terminal shell will execute it naturally.
-                # This is what allows TUI apps to work properly.
+                # Check if this is a TUI command that needs non-blocking execution
+                if current_cmd and not current_cmd.startswith("#"):
+                    cmd_name = current_cmd.split()[0].lower() if current_cmd.split() else ""
+                    is_tui = cmd_name in self.TUI_COMMANDS
 
-                current_cmd = ""  # Reset for next command
+                    if is_tui:
+                        # TUI apps need non-blocking execution so key actions can interact
+                        self._start_command(current_cmd)
+                        time.sleep(0.5)  # Give TUI time to start
+                        self._capture_frames_for_duration(500)
+                    else:
+                        # Regular command - blocking is fine
+                        os.system(current_cmd)
 
-                # Give commands/TUI apps time to start and render
-                time.sleep(0.3)
-                self._capture_frames_for_duration(300)
+                time.sleep(0.1)
+                self.capture_frame()
+                current_cmd = ""
 
             elif isinstance(action, SleepAction):
                 # Capture frames during the sleep period
                 self._capture_frames_for_duration(action.ms)
 
             elif isinstance(action, KeyAction):
-                # Ensure focus and send special key (for TUI interaction)
+                # Use keyboard simulation for special keys (TUI interaction)
+                # Reset focus to ensure terminal receives the key
+                _reset_terminal_hwnd()
+                _get_terminal_hwnd(force_refresh=True)
                 focus_terminal()
                 time.sleep(0.05)
                 send_key(action.key)
