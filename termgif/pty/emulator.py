@@ -293,6 +293,7 @@ class TerminalEmulator:
         i = 0
         while i < len(data):
             char = data[i]
+            code = ord(char)
 
             # Escape sequence
             if char == '\x1b':
@@ -303,58 +304,131 @@ class TerminalEmulator:
                     self._handle_escape(seq)
                     i += length
                     continue
+                # Standalone ESC - skip it
+                i += 1
+                continue
 
-            # Control characters
-            if char == '\n':
-                self.newline()
-            elif char == '\r':
-                self.carriage_return()
-            elif char == '\t':
-                self.tab()
-            elif char == '\b':
-                self.backspace()
-            elif char == '\x07':
-                pass  # Bell - ignore
-            elif ord(char) >= 32:
-                # Printable character
-                self.write_char(char)
+            # Control characters (0x00-0x1F and 0x7F)
+            if code < 32 or code == 127:
+                if char == '\n':
+                    self.newline()
+                elif char == '\r':
+                    self.carriage_return()
+                elif char == '\t':
+                    self.tab()
+                elif char == '\b':
+                    self.backspace()
+                # All other control chars (bell, etc.) are ignored
+                i += 1
+                continue
 
+            # C1 control characters (0x80-0x9F) - skip them
+            if 0x80 <= code <= 0x9F:
+                i += 1
+                continue
+
+            # Printable character (0x20-0x7E, or extended unicode)
+            self.write_char(char)
             i += 1
 
     def _parse_escape(self, data: str) -> tuple | None:
-        """Parse escape sequence, return (sequence, length) or None."""
+        """Parse escape sequence, return (sequence, length) or None.
+
+        This parser is designed to ALWAYS consume escape sequences fully,
+        never allowing partial sequences to leak as visible characters.
+        """
         if len(data) < 2:
-            return None
+            # Incomplete - consume just the ESC to prevent it showing
+            return (('INCOMPLETE',), 1)
 
-        # CSI sequences: ESC [
-        if data[1] == '[':
-            # Find end of CSI sequence
-            match = re.match(r'\x1b\[([0-9;?]*)([A-Za-z@`])', data)
-            if match:
-                return (('CSI', match.group(1), match.group(2)), match.end())
+        second = data[1]
 
-        # OSC sequences: ESC ]
-        elif data[1] == ']':
-            # Find terminator (BEL or ST)
-            end = data.find('\x07', 2)
-            if end == -1:
-                end = data.find('\x1b\\', 2)
-            if end != -1:
-                return (('OSC', data[2:end]), end + 1)
+        # CSI sequences: ESC [ (Control Sequence Introducer)
+        if second == '[':
+            # Find end: final byte is 0x40-0x7E (@, A-Z, [\]^_`, a-z, {|}~)
+            for j in range(2, min(len(data), 256)):
+                c = data[j]
+                code = ord(c)
+                if 0x40 <= code <= 0x7E:  # Final byte
+                    params_str = data[2:j]
+                    params_clean = ''.join(ch for ch in params_str if ch in '0123456789;?:<=>')
+                    return (('CSI', params_clean, c), j + 1)
+                elif code < 0x20:  # Control char - sequence is malformed
+                    break
+            # Consume ESC [ at minimum
+            return (('MALFORMED',), 2)
 
-        # Simple sequences
-        elif data[1] == '7':
-            return (('SAVE_CURSOR',), 2)
-        elif data[1] == '8':
-            return (('RESTORE_CURSOR',), 2)
-        elif data[1] == 'c':
-            return (('RESET',), 2)
-        elif data[1] == 'M':
-            return (('REVERSE_INDEX',), 2)
-        elif data[1] == 'D':
-            return (('INDEX',), 2)
+        # OSC sequences: ESC ] (Operating System Command) - titles, colors, etc.
+        if second == ']':
+            return self._parse_string_sequence(data, 2)
 
-        return None
+        # DCS sequences: ESC P (Device Control String)
+        if second == 'P':
+            return self._parse_string_sequence(data, 2)
+
+        # SOS, PM, APC: ESC X, ESC ^, ESC _
+        if second in 'X^_':
+            return self._parse_string_sequence(data, 2)
+
+        # Character set: ESC ( X, ESC ) X, ESC * X, ESC + X, ESC - X, ESC . X, ESC / X
+        if second in '()*+-./':
+            if len(data) >= 3:
+                return (('CHARSET',), 3)
+            return (('INCOMPLETE',), 2)
+
+        # Two-character sequences
+        two_char_seqs = {
+            '7': 'SAVE_CURSOR', '8': 'RESTORE_CURSOR',
+            'c': 'RESET', 'D': 'INDEX', 'E': 'NEXT_LINE', 'H': 'TAB_SET',
+            'M': 'REVERSE_INDEX', 'N': 'SS2', 'O': 'SS3',
+            '=': 'KEYPAD_APP', '>': 'KEYPAD_NUM',
+            '\\': 'ST', 'Z': 'DECID',
+            # Less common but valid
+            '6': 'DECBI', '9': 'DECFI', 'F': 'CURSOR_LOWER_LEFT',
+            'l': 'MEMORY_LOCK', 'm': 'MEMORY_UNLOCK',
+            'n': 'LS2', 'o': 'LS3', '|': 'LS3R', '}': 'LS2R', '~': 'LS1R',
+        }
+        if second in two_char_seqs:
+            return ((two_char_seqs[second],), 2)
+
+        # Space + letter sequences: ESC SP F, ESC SP G, etc.
+        if second == ' ':
+            if len(data) >= 3:
+                return (('SPACE_SEQ',), 3)
+            return (('INCOMPLETE',), 2)
+
+        # Hash sequences: ESC # 3, ESC # 8, etc.
+        if second == '#':
+            if len(data) >= 3:
+                return (('HASH_SEQ',), 3)
+            return (('INCOMPLETE',), 2)
+
+        # Percent sequences: ESC % @, ESC % G, etc. (character set)
+        if second == '%':
+            if len(data) >= 3:
+                return (('PERCENT_SEQ',), 3)
+            return (('INCOMPLETE',), 2)
+
+        # Any other printable after ESC - consume as 2-byte unknown
+        if 0x20 <= ord(second) <= 0x7E:
+            return (('UNKNOWN',), 2)
+
+        # Non-printable after ESC - just consume ESC
+        return (('UNKNOWN',), 1)
+
+    def _parse_string_sequence(self, data: str, start: int) -> tuple:
+        """Parse a string sequence (OSC, DCS, etc.) that ends with ST or BEL."""
+        # Look for terminator: BEL (\x07) or ST (\x1b\\ or \x9c)
+        for j in range(start, min(len(data), 8192)):
+            c = data[j]
+            if c == '\x07':  # BEL terminator
+                return (('STRING_SEQ',), j + 1)
+            if c == '\x9c':  # C1 ST
+                return (('STRING_SEQ',), j + 1)
+            if c == '\x1b' and j + 1 < len(data) and data[j + 1] == '\\':
+                return (('STRING_SEQ',), j + 2)
+        # No terminator found - consume the introducer only
+        return (('INCOMPLETE',), start)
 
     def _handle_escape(self, seq: tuple):
         """Handle parsed escape sequence."""
@@ -362,7 +436,16 @@ class TerminalEmulator:
 
         if seq_type == 'CSI':
             params_str, cmd = seq[1], seq[2]
-            params = [int(p) if p else 0 for p in params_str.split(';')] if params_str else []
+            # Remove '?' prefix for private sequences
+            is_private = params_str.startswith('?')
+            clean_params = params_str.lstrip('?')
+            params = []
+            if clean_params:
+                for p in clean_params.split(';'):
+                    try:
+                        params.append(int(p) if p else 0)
+                    except ValueError:
+                        params.append(0)
 
             if cmd == 'A':  # Cursor up
                 self.move_cursor('up', params[0] if params else 1)
@@ -372,6 +455,15 @@ class TerminalEmulator:
                 self.move_cursor('right', params[0] if params else 1)
             elif cmd == 'D':  # Cursor back
                 self.move_cursor('left', params[0] if params else 1)
+            elif cmd == 'E':  # Cursor next line
+                self.cursor_x = 0
+                self.move_cursor('down', params[0] if params else 1)
+            elif cmd == 'F':  # Cursor previous line
+                self.cursor_x = 0
+                self.move_cursor('up', params[0] if params else 1)
+            elif cmd == 'G':  # Cursor horizontal absolute
+                col = params[0] if params else 1
+                self.cursor_x = max(0, min(self.width - 1, col - 1))
             elif cmd == 'H' or cmd == 'f':  # Cursor position
                 row = params[0] if params else 1
                 col = params[1] if len(params) > 1 else 1
@@ -380,22 +472,54 @@ class TerminalEmulator:
                 self.clear_screen(params[0] if params else 0)
             elif cmd == 'K':  # Erase line
                 self.clear_line(params[0] if params else 0)
+            elif cmd == 'L':  # Insert lines
+                pass  # TODO: implement if needed
+            elif cmd == 'M':  # Delete lines
+                pass  # TODO: implement if needed
+            elif cmd == 'P':  # Delete characters
+                pass  # TODO: implement if needed
+            elif cmd == 'S':  # Scroll up
+                count = params[0] if params else 1
+                for _ in range(count):
+                    self._scroll_up()
+            elif cmd == 'T':  # Scroll down
+                count = params[0] if params else 1
+                for _ in range(count):
+                    self._scroll_down()
+            elif cmd == 'X':  # Erase characters
+                count = params[0] if params else 1
+                for x in range(self.cursor_x, min(self.cursor_x + count, self.width)):
+                    self.screen[self.cursor_y][x] = Cell()
+            elif cmd == 'd':  # Line position absolute
+                row = params[0] if params else 1
+                self.cursor_y = max(0, min(self.height - 1, row - 1))
             elif cmd == 'm':  # SGR (colors/attributes)
                 self.set_sgr(params)
+            elif cmd == 'n':  # Device status report - ignore
+                pass
+            elif cmd == 'r':  # Set scrolling region - ignore for now
+                pass
             elif cmd == 's':  # Save cursor
                 self.save_cursor()
+            elif cmd == 't':  # Window manipulation - ignore
+                pass
             elif cmd == 'u':  # Restore cursor
                 self.restore_cursor()
             elif cmd == 'h':  # Set mode
-                if params_str == '?1049':
-                    self.enter_alt_screen()
-                elif params_str == '?25':
-                    pass  # Show cursor - ignore
+                if is_private:
+                    if 1049 in params:
+                        self.enter_alt_screen()
+                    # Other private modes (cursor visibility, mouse, etc.) - ignore
             elif cmd == 'l':  # Reset mode
-                if params_str == '?1049':
-                    self.exit_alt_screen()
-                elif params_str == '?25':
-                    pass  # Hide cursor - ignore
+                if is_private:
+                    if 1049 in params:
+                        self.exit_alt_screen()
+                    # Other private modes - ignore
+            elif cmd == 'c':  # Device attributes - ignore
+                pass
+            elif cmd == 'q':  # Cursor style - ignore
+                pass
+            # All other CSI commands are silently ignored
 
         elif seq_type == 'SAVE_CURSOR':
             self.save_cursor()
@@ -413,6 +537,13 @@ class TerminalEmulator:
             if self.cursor_y < 0:
                 self._scroll_down()
                 self.cursor_y = 0
+        elif seq_type == 'NEXT_LINE':
+            self.cursor_x = 0
+            self.cursor_y += 1
+            if self.cursor_y >= self.height:
+                self._scroll_up()
+                self.cursor_y = self.height - 1
+        # All other sequence types (OSC, DCS, CHARSET, UNKNOWN, etc.) are silently ignored
 
     def get_lines(self) -> list[str]:
         """Get screen content as list of strings (for simple rendering)."""
