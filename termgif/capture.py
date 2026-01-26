@@ -612,6 +612,9 @@ class LiveRecorder:
         # PTY runner for TUI apps
         self.pty_runner: PTYRunner | None = None
 
+        # Native colors mode - preserve TUI app's colors
+        self.native_colors = config.native_colors
+
     def capture_frame(self, duration_ms: int = 100) -> None:
         """Capture current terminal state as a frame."""
         frame = self.renderer.render()
@@ -634,12 +637,31 @@ class LiveRecorder:
         # Clear renderer and add PTY screen lines
         self.renderer.state.lines = []
 
-        # Convert screen cells to text lines
-        # Note: For now we only extract plain text. Color support could be added
-        # by passing Cell objects to the renderer, but that requires renderer changes.
-        for row in screen:
-            line = ''.join(cell.char for cell in row).rstrip()
-            self.renderer.state.lines.append(line)
+        if self.native_colors:
+            # Native color mode - preserve TUI app's colors
+            from .renderer import StyledCell
+            styled_lines = []
+            for row in screen:
+                styled_row = []
+                for cell in row:
+                    styled_row.append(StyledCell(
+                        char=cell.char,
+                        fg=cell.fg,
+                        bg=cell.bg,
+                        bold=cell.bold,
+                    ))
+                styled_lines.append(styled_row)
+            self.renderer.state.styled_lines = styled_lines
+            # Also set text lines for fallback/cursor positioning
+            for row in screen:
+                line = ''.join(cell.char for cell in row).rstrip()
+                self.renderer.state.lines.append(line)
+        else:
+            # Normal mode - extract plain text only
+            self.renderer.state.styled_lines = None
+            for row in screen:
+                line = ''.join(cell.char for cell in row).rstrip()
+                self.renderer.state.lines.append(line)
 
         # Don't show prompt in TUI mode
         self.renderer.state.current_line = ""
@@ -888,7 +910,7 @@ class LiveRecorder:
         )
 
 
-def record_live(script_path: Path, output: Path | None = None) -> Path:
+def record_live(script_path: Path, output: Path | None = None, native_colors: bool = False) -> Path:
     """Record script with real command execution."""
     from .tg_parser import parse_tg
     from .tape import parse_tape
@@ -898,6 +920,10 @@ def record_live(script_path: Path, output: Path | None = None) -> Path:
         config, actions = parse_tg(script_path)
     else:
         config, actions = parse_tape(script_path)
+
+    # CLI flag overrides config
+    if native_colors:
+        config.native_colors = True
 
     # Determine output path
     if output:

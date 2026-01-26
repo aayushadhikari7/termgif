@@ -96,12 +96,23 @@ class TerminalStyle:
 
 
 @dataclass
+class StyledCell:
+    """A cell with styling info for native color rendering."""
+    char: str = " "
+    fg: str = "text"
+    bg: str = "base"
+    bold: bool = False
+
+
+@dataclass
 class TerminalState:
     """Current state of the terminal."""
     lines: list[str] = field(default_factory=list)
     current_line: str = ""
     prompt: str = ""
     cwd: str = ""
+    # Styled lines for native color mode (list of lists of StyledCell)
+    styled_lines: list[list[StyledCell]] | None = None
 
     def __post_init__(self):
         self.cwd = os.getcwd()
@@ -294,6 +305,57 @@ class TerminalRenderer:
         title_y = y + (title_h - (title_bbox[3] - title_bbox[1])) // 2
         draw.text((title_x, title_y), title, font=self.title_font, fill=colors["subtext0"])
 
+    def _resolve_color(self, color_name: str, is_foreground: bool = True) -> str:
+        """Resolve an ANSI color name or hex color to a theme color or hex.
+
+        Args:
+            color_name: Color name (e.g., "red", "green", "text") or hex ("#rrggbb")
+            is_foreground: Whether this is a foreground color (affects defaults)
+
+        Returns:
+            Hex color string
+        """
+        # Already hex color
+        if color_name.startswith("#"):
+            return color_name
+
+        # Map ANSI color names to theme colors
+        ansi_to_theme = {
+            # Standard ANSI colors
+            "black": "crust",
+            "red": "red",
+            "green": "green",
+            "yellow": "yellow",
+            "blue": "blue",
+            "magenta": "mauve",
+            "cyan": "teal",
+            "white": "text",
+            # Bright ANSI colors
+            "bright_black": "surface2",
+            "bright_red": "red",
+            "bright_green": "green",
+            "bright_yellow": "yellow",
+            "bright_blue": "blue",
+            "bright_magenta": "mauve",
+            "bright_cyan": "teal",
+            "bright_white": "text",
+            # Default names
+            "text": "text",
+            "base": "base",
+        }
+
+        theme_key = ansi_to_theme.get(color_name, "text" if is_foreground else "base")
+        return self.colors.get(theme_key, self.colors["text"] if is_foreground else self.colors["base"])
+
+    def _draw_styled_line(self, draw: ImageDraw.ImageDraw, cells: list[StyledCell], x: int, y: int):
+        """Draw a line with per-character styling (for native TUI colors)."""
+        for cell in cells:
+            if cell.char.strip():  # Only draw non-whitespace or draw all
+                fg_color = self._resolve_color(cell.fg, is_foreground=True)
+                # TODO: Background colors could be drawn as rectangles if needed
+                draw.text((x, y), cell.char, font=self.font, fill=fg_color)
+            x += self.char_width
+
     def _draw_text_line(self, draw: ImageDraw.ImageDraw, line: str, x: int, y: int):
         """Draw a line with syntax highlighting."""
         prompt = self.state.prompt
@@ -411,15 +473,26 @@ class TerminalRenderer:
         content_x = window_x + pad
         content_y = window_y + title_h + pad
 
-        all_lines = self.state.lines + [self.state.current_line]
-        visible_lines = all_lines[-s.height:]
+        # Check if we have styled lines (native color mode)
+        if self.state.styled_lines is not None:
+            visible_styled = self.state.styled_lines[-s.height:]
+            y = content_y
+            for cells in visible_styled:
+                # Truncate if too long
+                if len(cells) > s.width:
+                    cells = cells[:s.width - 1] + [StyledCell(char="…")]
+                self._draw_styled_line(draw, cells, content_x, y)
+                y += self.char_height
+        else:
+            all_lines = self.state.lines + [self.state.current_line]
+            visible_lines = all_lines[-s.height:]
 
-        y = content_y
-        for line in visible_lines:
-            if len(line) > s.width:
-                line = line[:s.width - 1] + "…"
-            self._draw_text_line(draw, line, content_x, y)
-            y += self.char_height
+            y = content_y
+            for line in visible_lines:
+                if len(line) > s.width:
+                    line = line[:s.width - 1] + "…"
+                self._draw_text_line(draw, line, content_x, y)
+                y += self.char_height
 
         # Draw cursor based on style
         cursor_line_idx = len(visible_lines) - 1

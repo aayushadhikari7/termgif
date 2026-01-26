@@ -44,6 +44,9 @@ BOILERPLATE = '''// =============================================
 // @radius-outer 12           // Outer GIF edge only
 // @radius-inner 8            // Inner window only
 
+// TUI apps
+// @native                    // Preserve TUI app's colors (don't apply theme)
+
 // Advanced
 @loop 0                       // 0 = infinite, 1 = once, N = N times
 @quality 2                    // 1 = fast, 2 = smooth, 3 = ultra
@@ -79,6 +82,7 @@ HELP_TEXT = """
   -b, --bare             No window chrome, just terminal
   -s, --simulate         Fake output (don't run real commands)
   -t, --terminal         Capture YOUR terminal window (screen record)
+  -n, --native           Preserve TUI app's native colors (don't apply theme)
   -v, --version          Show version
   -h, --help             Show this help
 
@@ -99,6 +103,7 @@ HELP_TEXT = """
   @radius 10               [dim]# corner radius (both)[/]
   @radius-outer 12         [dim]# outer GIF edge[/]
   @radius-inner 8          [dim]# inner window[/]
+  @native                  [dim]# preserve TUI colors[/]
   @loop 0                  [dim]# 0=infinite, N=times[/]
   @quality 2               [dim]# 1=fast, 2=smooth, 3=ultra[/]
 
@@ -139,7 +144,7 @@ def show_help():
     console.print(HELP_TEXT.format(version=__version__))
 
 
-def record(script_path: Path, output: Path | None = None, bare: bool = False, simulate: bool = False, terminal: bool = False):
+def record(script_path: Path, output: Path | None = None, bare: bool = False, simulate: bool = False, terminal: bool = False, native: bool = False):
     """Record a script to GIF."""
     if terminal:
         # Screen capture mode - captures your actual terminal
@@ -172,11 +177,12 @@ def record(script_path: Path, output: Path | None = None, bare: bool = False, si
     else:
         # Default - run real commands
         mode = " [dim](bare)[/]" if bare else ""
-        console.print(f"[blue]Recording[/] {script_path}{mode}")
+        native_mode = " [dim](native colors)[/]" if native else ""
+        console.print(f"[blue]Recording[/] {script_path}{mode}{native_mode}")
         console.print("[dim]Running commands...[/]\n")
 
         try:
-            out_path = record_live(script_path, output)
+            out_path = record_live(script_path, output, native_colors=native)
             console.print(f"\n[green]Done![/] Saved to {out_path}")
         except Exception as e:
             console.print(f"\n[red]Error:[/] {e}")
@@ -253,6 +259,7 @@ def main():
     bare = False
     simulate = False
     terminal = False
+    native = False
     i = 1
     while i < len(args):
         if args[i] in ("-o", "--output") and i + 1 < len(args):
@@ -269,10 +276,13 @@ def main():
         elif args[i] in ("--terminal", "-t"):
             terminal = True
             i += 1
+        elif args[i] in ("--native", "-n"):
+            native = True
+            i += 1
         else:
             i += 1
 
-    record(script_path, output, bare, simulate, terminal)
+    record(script_path, output, bare, simulate, terminal, native)
 
 
 if __name__ == "__main__":

@@ -64,6 +64,7 @@ class TokenType(Enum):
     AT_RADIUS = auto()
     AT_RADIUS_OUTER = auto()
     AT_RADIUS_INNER = auto()
+    AT_NATIVE = auto()
 
     # Actions
     ARROW = auto()          # ->
@@ -206,6 +207,7 @@ class TgTokenizer:
             "radius": TokenType.AT_RADIUS,
             "radius-outer": TokenType.AT_RADIUS_OUTER,
             "radius-inner": TokenType.AT_RADIUS_INNER,
+            "native": TokenType.AT_NATIVE,
         }
 
         if directive not in token_map:
@@ -473,6 +475,10 @@ class TgParser:
                 self._advance()
                 token = self._expect(TokenType.NUMBER)
                 config.radius_inner = max(0, int(token.value))
+
+            elif self._current().type == TokenType.AT_NATIVE:
+                self._advance()
+                config.native_colors = True
 
             # Actions
             elif self._current().type == TokenType.ARROW:

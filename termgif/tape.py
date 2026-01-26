@@ -58,6 +58,7 @@ class TapeConfig:
     radius: int = 10  # Corner radius for both inner and outer (0 = sharp)
     radius_outer: int | None = None  # Outer GIF edge radius (None = use radius)
     radius_inner: int | None = None  # Inner window radius (None = use radius)
+    native_colors: bool = False  # Preserve TUI app's native colors (don't apply theme)
 
 
 def parse_duration(s: str) -> int:
