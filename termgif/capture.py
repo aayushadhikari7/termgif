@@ -1022,6 +1022,9 @@ def record_live(script_path: Path, output: Path | None = None, native_colors: bo
     if not output_path.suffix:
         output_path = output_path.with_suffix(".gif")
 
+    # Create output directory if it doesn't exist
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
     recorder = LiveRecorder(config)
     recorder.run_actions(actions)
     recorder.save_gif(output_path)
@@ -1643,6 +1646,11 @@ class TerminalRecorder:
             # Build ffmpeg command
             input_pattern = os.path.join(temp_dir, "frame_%05d.png")
             output_path = str(self.output)
+
+            # Create output directory if it doesn't exist
+            output_dir = os.path.dirname(output_path)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
 
             cmd = [
                 "ffmpeg", "-y",
