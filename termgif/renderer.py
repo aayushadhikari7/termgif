@@ -474,8 +474,10 @@ class TerminalRenderer:
         content_y = window_y + title_h + pad
 
         # Check if we have styled lines (native color mode)
+        visible_line_count = 0
         if self.state.styled_lines is not None:
             visible_styled = self.state.styled_lines[-s.height:]
+            visible_line_count = len(visible_styled)
             y = content_y
             for cells in visible_styled:
                 # Truncate if too long
@@ -486,6 +488,7 @@ class TerminalRenderer:
         else:
             all_lines = self.state.lines + [self.state.current_line]
             visible_lines = all_lines[-s.height:]
+            visible_line_count = len(visible_lines)
 
             y = content_y
             for line in visible_lines:
@@ -494,9 +497,9 @@ class TerminalRenderer:
                 self._draw_text_line(draw, line, content_x, y)
                 y += self.char_height
 
-        # Draw cursor based on style
-        cursor_line_idx = len(visible_lines) - 1
-        if cursor_line_idx >= 0:
+        # Draw cursor based on style (skip in native/TUI mode - TUI apps manage their own cursor)
+        if self.state.styled_lines is None and visible_line_count > 0:
+            cursor_line_idx = visible_line_count - 1
             cursor_x = content_x + len(self.state.current_line) * self.char_width
             cursor_y = content_y + cursor_line_idx * self.char_height
 
