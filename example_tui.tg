@@ -1,0 +1,37 @@
+// =============================================
+// example_tui.tg - TUI application demo
+// Run with: termgif example_tui.tg --terminal
+// =============================================
+
+// ------------------- CONFIG -------------------
+@output "example_tui.gif"
+@size 100x30
+@font 14
+@speed 80ms
+@fps 15
+@title "TUI Demo"
+@theme "mocha"
+
+// ------------------- SCRIPT -------------------
+
+// Launch depviz TUI
+-> "depviz" >>
+~1s
+
+// Navigate with arrow keys
+key "down"
+~300ms
+key "down"
+~300ms
+key "up"
+~300ms
+
+// Select/expand with enter
+key "enter"
+~500ms
+
+// Exit the TUI
+key "escape"
+~300ms
+key "q"
+~500ms

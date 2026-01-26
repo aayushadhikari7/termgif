@@ -22,16 +22,25 @@ Syntax:
     >>                      - Press enter
     ~500ms                  - Sleep
     -> "text" >>            - Type + enter (combined)
+    key "escape"            - Press special key (for TUI apps)
+    key "ctrl+c"            - Press key combo (ctrl, alt modifiers)
 
     // comment              - Single-line comment
     /* comment */           - Multi-line comment
+
+Supported keys for TUI interaction:
+    Navigation: up, down, left, right, home, end, pageup, pagedown
+    Editing: backspace, delete, tab, space
+    Control: escape, enter, return
+    Modifiers: ctrl+c, ctrl+d, ctrl+z, ctrl+l, alt+<key>
+    Function keys: f1-f12
 """
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 from typing import Iterator
 
-from .tape import TapeConfig, TypeAction, EnterAction, SleepAction, parse_duration
+from .tape import TapeConfig, TypeAction, EnterAction, SleepAction, KeyAction, parse_duration
 
 
 class TokenType(Enum):
@@ -60,6 +69,7 @@ class TokenType(Enum):
     ARROW = auto()          # ->
     DOUBLE_ARROW = auto()   # >>
     TILDE = auto()          # ~ (with duration)
+    KEY = auto()            # key "..." (special key press)
 
     # Values
     STRING = auto()
@@ -301,6 +311,21 @@ class TgTokenizer:
                 yield self._read_number_or_dimensions()
                 continue
 
+            # Keywords (key)
+            if self._current().isalpha():
+                start_col = self.column
+                word = []
+                while self._current() and self._current().isalnum():
+                    word.append(self._advance())
+                keyword = "".join(word).lower()
+                if keyword == "key":
+                    yield Token(TokenType.KEY, "key", self.line, start_col)
+                    continue
+                else:
+                    raise SyntaxError(
+                        f"Unknown keyword '{keyword}' at line {self.line}, column {start_col}"
+                    )
+
             raise SyntaxError(
                 f"Unexpected character '{self._current()}' at line {self.line}, column {self.column}"
             )
@@ -468,6 +493,12 @@ class TgParser:
                 # Standalone ~duration (tilde was consumed by tokenizer)
                 token = self._advance()
                 actions.append(SleepAction(ms=parse_duration(token.value)))
+
+            elif self._current().type == TokenType.KEY:
+                # key "escape" - special key press for TUI interaction
+                self._advance()
+                token = self._expect(TokenType.STRING)
+                actions.append(KeyAction(key=token.value.lower()))
 
             else:
                 raise SyntaxError(

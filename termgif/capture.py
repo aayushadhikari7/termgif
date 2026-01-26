@@ -9,7 +9,285 @@ import numpy as np
 import cv2
 
 from .renderer import TerminalRenderer, TerminalStyle
-from .tape import TapeConfig, TypeAction, EnterAction, SleepAction
+from .tape import TapeConfig, TypeAction, EnterAction, SleepAction, KeyAction
+
+
+# =============================================================================
+# KEYBOARD SIMULATION (for TUI interaction)
+# =============================================================================
+
+# Virtual key codes for Windows
+_WIN_VK_CODES = {
+    # Navigation
+    "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
+    "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,
+    # Editing
+    "backspace": 0x08, "delete": 0x2E, "tab": 0x09, "space": 0x20,
+    # Control
+    "escape": 0x1B, "enter": 0x0D, "return": 0x0D,
+    # Function keys
+    "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73,
+    "f5": 0x74, "f6": 0x75, "f7": 0x76, "f8": 0x77,
+    "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
+    # Modifiers (used internally)
+    "ctrl": 0x11, "alt": 0x12, "shift": 0x10,
+}
+
+# Key names for xdotool (Linux)
+_XDOTOOL_KEYS = {
+    "up": "Up", "down": "Down", "left": "Left", "right": "Right",
+    "home": "Home", "end": "End", "pageup": "Page_Up", "pagedown": "Page_Down",
+    "backspace": "BackSpace", "delete": "Delete", "tab": "Tab", "space": "space",
+    "escape": "Escape", "enter": "Return", "return": "Return",
+    "f1": "F1", "f2": "F2", "f3": "F3", "f4": "F4",
+    "f5": "F5", "f6": "F6", "f7": "F7", "f8": "F8",
+    "f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
+}
+
+# Key codes for macOS (using key codes for System Events)
+_MACOS_KEY_CODES = {
+    "up": 126, "down": 125, "left": 123, "right": 124,
+    "home": 115, "end": 119, "pageup": 116, "pagedown": 121,
+    "backspace": 51, "delete": 117, "tab": 48, "space": 49,
+    "escape": 53, "enter": 36, "return": 36,
+    "f1": 122, "f2": 120, "f3": 99, "f4": 118,
+    "f5": 96, "f6": 97, "f7": 98, "f8": 100,
+    "f9": 101, "f10": 109, "f11": 103, "f12": 111,
+}
+
+
+def send_key(key: str) -> bool:
+    """Send a keystroke to the active window.
+
+    Args:
+        key: Key name like "escape", "up", "ctrl+c", "alt+f4", etc.
+
+    Returns:
+        True if successful, False otherwise.
+    """
+    key = key.lower().strip()
+
+    # Parse modifiers (ctrl+c, alt+f4, etc.)
+    modifiers = []
+    actual_key = key
+    if "+" in key:
+        parts = key.split("+")
+        modifiers = [p.strip() for p in parts[:-1]]
+        actual_key = parts[-1].strip()
+
+    if sys.platform == "win32":
+        return _send_key_windows(actual_key, modifiers)
+    elif sys.platform == "darwin":
+        return _send_key_macos(actual_key, modifiers)
+    else:
+        return _send_key_linux(actual_key, modifiers)
+
+
+def _send_key_windows(key: str, modifiers: list[str]) -> bool:
+    """Send keystroke on Windows using SendInput."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+
+        # Input structure for SendInput
+        INPUT_KEYBOARD = 1
+        KEYEVENTF_KEYUP = 0x0002
+
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [
+                ("wVk", wintypes.WORD),
+                ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+            ]
+
+        class INPUT(ctypes.Structure):
+            _fields_ = [
+                ("type", wintypes.DWORD),
+                ("ki", KEYBDINPUT),
+            ]
+
+        def press_key(vk_code: int) -> None:
+            inp = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(wVk=vk_code))
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+        def release_key(vk_code: int) -> None:
+            inp = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(wVk=vk_code, dwFlags=KEYEVENTF_KEYUP))
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+        # Get key code
+        if key in _WIN_VK_CODES:
+            vk_code = _WIN_VK_CODES[key]
+        elif len(key) == 1:
+            # Single character - get virtual key code
+            vk_code = user32.VkKeyScanW(ord(key)) & 0xFF
+        else:
+            return False
+
+        # Press modifiers
+        for mod in modifiers:
+            if mod in _WIN_VK_CODES:
+                press_key(_WIN_VK_CODES[mod])
+
+        # Press and release the key
+        press_key(vk_code)
+        time.sleep(0.01)
+        release_key(vk_code)
+
+        # Release modifiers (in reverse order)
+        for mod in reversed(modifiers):
+            if mod in _WIN_VK_CODES:
+                release_key(_WIN_VK_CODES[mod])
+
+        return True
+    except Exception:
+        return False
+
+
+def _send_key_macos(key: str, modifiers: list[str]) -> bool:
+    """Send keystroke on macOS using osascript."""
+    try:
+        # Build modifier string for AppleScript
+        mod_str = ""
+        if "ctrl" in modifiers or "control" in modifiers:
+            mod_str += "control down, "
+        if "alt" in modifiers or "option" in modifiers:
+            mod_str += "option down, "
+        if "shift" in modifiers:
+            mod_str += "shift down, "
+        if "cmd" in modifiers or "command" in modifiers:
+            mod_str += "command down, "
+
+        if mod_str:
+            mod_str = " using {" + mod_str.rstrip(", ") + "}"
+
+        # Get key code or use character
+        if key in _MACOS_KEY_CODES:
+            script = f'tell application "System Events" to key code {_MACOS_KEY_CODES[key]}{mod_str}'
+        elif len(key) == 1:
+            script = f'tell application "System Events" to keystroke "{key}"{mod_str}'
+        else:
+            return False
+
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
+        return True
+    except Exception:
+        return False
+
+
+def _send_key_linux(key: str, modifiers: list[str]) -> bool:
+    """Send keystroke on Linux using xdotool."""
+    try:
+        # Build key combination for xdotool
+        key_combo = ""
+        if "ctrl" in modifiers or "control" in modifiers:
+            key_combo += "ctrl+"
+        if "alt" in modifiers:
+            key_combo += "alt+"
+        if "shift" in modifiers:
+            key_combo += "shift+"
+        if "super" in modifiers or "meta" in modifiers:
+            key_combo += "super+"
+
+        # Get xdotool key name
+        if key in _XDOTOOL_KEYS:
+            key_combo += _XDOTOOL_KEYS[key]
+        elif len(key) == 1:
+            key_combo += key
+        else:
+            return False
+
+        subprocess.run(["xdotool", "key", key_combo], capture_output=True, timeout=5)
+        return True
+    except Exception:
+        return False
+
+
+def type_text(text: str) -> bool:
+    """Type text character by character.
+
+    Args:
+        text: The text to type.
+
+    Returns:
+        True if successful, False otherwise.
+    """
+    if sys.platform == "win32":
+        return _type_text_windows(text)
+    elif sys.platform == "darwin":
+        return _type_text_macos(text)
+    else:
+        return _type_text_linux(text)
+
+
+def _type_text_windows(text: str) -> bool:
+    """Type text on Windows using SendInput."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+
+        INPUT_KEYBOARD = 1
+        KEYEVENTF_UNICODE = 0x0004
+        KEYEVENTF_KEYUP = 0x0002
+
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [
+                ("wVk", wintypes.WORD),
+                ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+            ]
+
+        class INPUT(ctypes.Structure):
+            _fields_ = [
+                ("type", wintypes.DWORD),
+                ("ki", KEYBDINPUT),
+            ]
+
+        for char in text:
+            # Use Unicode input for each character
+            inp_down = INPUT(
+                type=INPUT_KEYBOARD,
+                ki=KEYBDINPUT(wVk=0, wScan=ord(char), dwFlags=KEYEVENTF_UNICODE)
+            )
+            inp_up = INPUT(
+                type=INPUT_KEYBOARD,
+                ki=KEYBDINPUT(wVk=0, wScan=ord(char), dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)
+            )
+            user32.SendInput(1, ctypes.byref(inp_down), ctypes.sizeof(INPUT))
+            user32.SendInput(1, ctypes.byref(inp_up), ctypes.sizeof(INPUT))
+            time.sleep(0.01)  # Small delay between characters
+
+        return True
+    except Exception:
+        return False
+
+
+def _type_text_macos(text: str) -> bool:
+    """Type text on macOS using osascript."""
+    try:
+        # Escape special characters for AppleScript
+        escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+        script = f'tell application "System Events" to keystroke "{escaped}"'
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=10)
+        return True
+    except Exception:
+        return False
+
+
+def _type_text_linux(text: str) -> bool:
+    """Type text on Linux using xdotool."""
+    try:
+        subprocess.run(["xdotool", "type", "--", text], capture_output=True, timeout=10)
+        return True
+    except Exception:
+        return False
 
 # Screen capture support - use PIL's ImageGrab (built-in, more reliable)
 HAS_CAPTURE = True
@@ -474,17 +752,24 @@ def apply_rounded_corners(frame: Image.Image, radius: int, bg_color: tuple = (30
 
 
 class TerminalRecorder:
-    """Records the actual terminal window via screen capture."""
+    """Records the actual terminal window via screen capture.
 
-    def __init__(self, output: str = "output.gif", fps: int = 10, radius: int = 0):
+    Supports TUI applications by using non-blocking command execution
+    and keyboard simulation for interactive input.
+    """
+
+    def __init__(self, output: str = "output.gif", fps: int = 10, radius: int = 0,
+                 typing_speed_ms: int = 50):
         self.output = Path(output)
         self.fps = fps
         self.frame_duration = 1000 // fps
+        self.typing_speed_ms = typing_speed_ms
         self.frames: list[Image.Image] = []
         self.bbox = None  # (left, top, right, bottom) for ImageGrab
         self.radius = radius  # Corner radius for rounded corners
         self.last_valid_frame = None  # For alt-tab recovery
         self.expected_size = None  # Track expected frame size
+        self.active_process = None  # Track running TUI process
 
     def start_capture(self):
         """Detect terminal window region."""
@@ -559,9 +844,26 @@ class TerminalRecorder:
             return False
 
     def run_script(self, commands: list[tuple[str, int]], typing_speed_ms: int = 50):
-        """Run commands in the terminal and capture frames.
+        """Legacy method for backwards compatibility.
 
         commands: list of (command_string, sleep_after_ms)
+        """
+        # Convert to actions format
+        actions = []
+        for cmd, sleep_ms in commands:
+            if cmd:
+                actions.append(TypeAction(text=cmd))
+                actions.append(EnterAction())
+            if sleep_ms > 0:
+                actions.append(SleepAction(ms=sleep_ms))
+
+        self.run_actions(actions, typing_speed_ms)
+
+    def run_actions(self, actions: list, typing_speed_ms: int = 50):
+        """Run actions in the terminal and capture frames.
+
+        Handles TypeAction, EnterAction, SleepAction, and KeyAction.
+        Commands are executed non-blocking to support TUI applications.
         """
         # Clear terminal for clean recording
         if sys.platform == "win32":
@@ -572,34 +874,118 @@ class TerminalRecorder:
         time.sleep(0.3)
         self.capture_frame()
 
-        for cmd, sleep_ms in commands:
-            # Type the command character by character
-            for char in cmd:
-                print(char, end="", flush=True)
-                time.sleep(typing_speed_ms / 1000)
+        current_cmd = ""  # Accumulate typed text for command execution
+
+        for action in actions:
+            if isinstance(action, TypeAction):
+                # Type text character by character using keyboard simulation
+                for char in action.text:
+                    type_text(char)
+                    time.sleep(typing_speed_ms / 1000)
+                    self.capture_frame()
+                current_cmd += action.text
+
+            elif isinstance(action, EnterAction):
+                # Send enter key
+                send_key("enter")
+                time.sleep(0.05)
                 self.capture_frame()
 
-            # Press enter
-            print()
+                # Start command execution non-blocking (for TUI apps)
+                if current_cmd and not current_cmd.startswith("#"):
+                    self._start_command(current_cmd)
+
+                current_cmd = ""  # Reset for next command
+
+                # Give TUI apps time to initialize
+                time.sleep(0.2)
+                self._capture_frames_for_duration(200)
+
+            elif isinstance(action, SleepAction):
+                # Capture frames during the sleep period
+                self._capture_frames_for_duration(action.ms)
+
+            elif isinstance(action, KeyAction):
+                # Send special key (for TUI interaction)
+                send_key(action.key)
+                time.sleep(0.05)
+                self.capture_frame()
+
+                # Give the TUI time to respond
+                time.sleep(0.1)
+                self._capture_frames_for_duration(100)
+
+        # Final frames
+        self._capture_frames_for_duration(500)
+
+        # Clean up any running process
+        self._cleanup_process()
+
+    def _start_command(self, cmd: str) -> None:
+        """Start a command without waiting for it to complete.
+
+        This allows TUI applications to run while we continue capturing frames.
+        """
+        try:
+            # Clean up previous process if any
+            self._cleanup_process()
+
+            # Set environment for cleaner TUI output
+            env = os.environ.copy()
+
+            # Start process without waiting
+            # Use shell=True to handle complex commands
+            # Don't capture output - let it go to the terminal
+            if sys.platform == "win32":
+                # On Windows, use CREATE_NEW_PROCESS_GROUP to allow clean termination
+                self.active_process = subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    env=env,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                )
+            else:
+                # On Unix, start in new process group
+                self.active_process = subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    env=env,
+                    start_new_session=True,
+                )
+        except Exception:
+            self.active_process = None
+
+    def _cleanup_process(self) -> None:
+        """Terminate any running process."""
+        if self.active_process is not None:
+            try:
+                # Check if still running
+                if self.active_process.poll() is None:
+                    # Try graceful termination first
+                    self.active_process.terminate()
+                    try:
+                        self.active_process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        # Force kill if termination didn't work
+                        self.active_process.kill()
+            except Exception:
+                pass
+            finally:
+                self.active_process = None
+
+    def _capture_frames_for_duration(self, duration_ms: int) -> None:
+        """Capture frames for a specified duration.
+
+        This keeps capturing frames while TUI apps are running,
+        ensuring we get smooth animation of their interface.
+        """
+        if duration_ms <= 0:
+            return
+
+        frames_needed = max(1, duration_ms // self.frame_duration)
+        for _ in range(frames_needed):
+            time.sleep(self.frame_duration / 1000)
             self.capture_frame()
-
-            # Execute command
-            if cmd and not cmd.startswith("#"):
-                os.system(cmd)
-
-            time.sleep(0.1)
-            self.capture_frame()
-
-            # Wait and capture frames during sleep
-            if sleep_ms > 0:
-                frames_needed = max(1, sleep_ms // self.frame_duration)
-                for _ in range(frames_needed):
-                    time.sleep(self.frame_duration / 1000)
-                    self.capture_frame()
-
-        # Final frame
-        time.sleep(0.5)
-        self.capture_frame()
 
     def save_gif(self):
         """Save captured frames as GIF using ffmpeg."""
@@ -708,6 +1094,11 @@ def record_terminal(script_path: Path, output: Path | None = None) -> Path:
 
     This captures YOUR terminal (wezterm, ghostty, Windows Terminal, etc.)
     with all your custom themes and fonts.
+
+    Supports TUI applications through:
+    - Non-blocking command execution
+    - Keyboard simulation for key actions
+    - Continuous frame capture during sleeps
     """
     if not HAS_CAPTURE:
         raise RuntimeError("Screen capture not available on this platform")
@@ -736,25 +1127,15 @@ def record_terminal(script_path: Path, output: Path | None = None) -> Path:
     if not output_path.suffix:
         output_path = output_path.with_suffix(".gif")
 
-    # Convert actions to commands
-    commands = []
-    current_cmd = ""
-    current_sleep = 0
-
-    for action in actions:
-        if isinstance(action, TypeAction):
-            current_cmd += action.text
-        elif isinstance(action, EnterAction):
-            commands.append((current_cmd, current_sleep))
-            current_cmd = ""
-            current_sleep = 0
-        elif isinstance(action, SleepAction):
-            current_sleep = action.ms
-
     # Initialize recorder with outer radius for rounded corners
     # For --terminal mode, only outer radius applies (we capture the actual window)
     outer_r = config.radius_outer if config.radius_outer is not None else config.radius
-    recorder = TerminalRecorder(str(output_path), fps=config.fps, radius=outer_r)
+    recorder = TerminalRecorder(
+        str(output_path),
+        fps=config.fps,
+        radius=outer_r,
+        typing_speed_ms=config.typing_speed_ms,
+    )
 
     # Detect terminal window and start capture
     region = recorder.start_capture()
@@ -771,8 +1152,8 @@ def record_terminal(script_path: Path, output: Path | None = None) -> Path:
     else:
         print("[Warning: Could not detect terminal window, capturing full screen]")
 
-    # Run the script (will clear screen and record)
-    recorder.run_script(commands, config.typing_speed_ms)
+    # Run actions directly (supports TUI apps with key actions)
+    recorder.run_actions(actions, config.typing_speed_ms)
     recorder.save_gif()
 
     return output_path

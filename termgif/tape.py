@@ -23,6 +23,20 @@ class SleepAction:
 
 
 @dataclass
+class KeyAction:
+    """Press a special key (for TUI interaction).
+
+    Supported keys:
+    - Navigation: up, down, left, right, home, end, pageup, pagedown
+    - Editing: backspace, delete, tab, space
+    - Control: escape, enter, return
+    - Modifiers: ctrl+c, ctrl+d, ctrl+z, ctrl+l, alt+<key>
+    - Function keys: f1-f12
+    """
+    key: str
+
+
+@dataclass
 class TapeConfig:
     """Recording configuration."""
     output: str = "output.gif"
