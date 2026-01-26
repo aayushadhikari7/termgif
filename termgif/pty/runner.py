@@ -4,29 +4,25 @@ import os
 import subprocess
 import threading
 import time
-from typing import Callable
 
 from .emulator import TerminalEmulator, Cell
 
 # Check for PTY support
 HAS_PTY = False
 HAS_CONPTY = False
+HAS_WINPTY = False
 
 if sys.platform == "win32":
-    # Windows - check for ConPTY support (Windows 10 1809+)
+    # Windows - use pywinpty for reliable TUI capture
     try:
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.windll.kernel32
-        # Check if CreatePseudoConsole exists (Windows 10 1809+)
-        kernel32.CreatePseudoConsole
+        import winpty
+        HAS_WINPTY = True
         HAS_CONPTY = True
-        HAS_PTY = True  # ConPTY counts as PTY support
-    except (AttributeError, OSError):
-        pass  # Old Windows without ConPTY
+        HAS_PTY = True
+    except ImportError:
+        pass  # No PTY support without pywinpty on Windows
 else:
-    # Unix - check for pty module
+    # Unix - use native pty module
     try:
         import pty
         import select
@@ -41,8 +37,8 @@ else:
 class PTYRunner:
     """Runs commands in a pseudo-terminal and captures output.
 
-    On Unix: Uses real PTY for full TUI support
-    On Windows: Falls back to subprocess with ConPTY-like behavior
+    On Unix: Uses native PTY for full TUI support
+    On Windows: Uses pywinpty (requires `pip install pywinpty`)
     """
 
     def __init__(self, width: int = 80, height: int = 24):
@@ -57,58 +53,71 @@ class PTYRunner:
         self._lock = threading.Lock()
 
     def start(self, cmd: str) -> bool:
-        """Start a command in the PTY.
-
-        Returns True if started successfully.
-        """
-        if HAS_PTY:
+        """Start a command in the PTY. Returns True if started successfully."""
+        if sys.platform == "win32":
+            if HAS_WINPTY:
+                return self._start_winpty(cmd)
+            else:
+                return self._start_windows_fallback(cmd)
+        elif HAS_PTY:
             return self._start_unix(cmd)
-        else:
-            return self._start_windows(cmd)
+        return False
 
-    def _start_unix(self, cmd: str) -> bool:
-        """Start command with Unix PTY."""
+    def _start_winpty(self, cmd: str) -> bool:
+        """Start command using pywinpty (Windows)."""
         try:
-            # Create pseudo-terminal
-            self.master_fd, slave_fd = pty.openpty()
+            import winpty
 
-            # Set terminal size
-            winsize = struct.pack('HHHH', self.height, self.width, 0, 0)
-            fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
-
-            # Start process
-            self.process = subprocess.Popen(
-                cmd,
-                shell=True,
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                close_fds=True,
-            )
-
-            # Close slave in parent
-            os.close(slave_fd)
-
-            # Set master to non-blocking
-            flags = fcntl.fcntl(self.master_fd, fcntl.F_GETFL)
-            fcntl.fcntl(self.master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-
+            self._winpty = winpty.PTY(self.width, self.height)
+            self._winpty.spawn('cmd.exe')
             self.running = True
 
-            # Start output reader thread
-            self._output_thread = threading.Thread(target=self._read_output_unix, daemon=True)
+            # Start background reader
+            self._output_thread = threading.Thread(target=self._read_output_winpty, daemon=True)
             self._output_thread.start()
 
+            # Wait for shell prompt
+            for _ in range(100):
+                time.sleep(0.1)
+                try:
+                    data = self._winpty.read(blocking=False)
+                    if data:
+                        with self._lock:
+                            self._output_buffer += data
+                            self.emulator.feed(data)
+                        if '>' in data:
+                            break
+                except Exception:
+                    pass
+
+            # Send command
+            self._winpty.write(cmd + '\r\n')
             return True
+
         except Exception as e:
-            print(f"[PTY Error: {e}]")
+            print(f"[WinPTY Error: {e}]")
             return False
 
-    def _start_windows(self, cmd: str) -> bool:
-        """Start command on Windows (limited TUI support)."""
+    def _read_output_winpty(self):
+        """Read output from pywinpty."""
+        while self.running:
+            try:
+                if not hasattr(self, '_winpty') or not self._winpty:
+                    break
+                data = self._winpty.read(blocking=False)
+                if data:
+                    with self._lock:
+                        self._output_buffer += data
+                        self.emulator.feed(data)
+                else:
+                    time.sleep(0.05)
+            except Exception:
+                time.sleep(0.05)
+        self.running = False
+
+    def _start_windows_fallback(self, cmd: str) -> bool:
+        """Start command on Windows without PTY (limited TUI support)."""
         try:
-            # On Windows, we use subprocess with pipes
-            # This won't work for full TUI apps but handles basic ANSI
             self.process = subprocess.Popen(
                 cmd,
                 shell=True,
@@ -117,16 +126,43 @@ class PTYRunner:
                 stderr=subprocess.STDOUT,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
             )
-
             self.running = True
-
-            # Start output reader thread
-            self._output_thread = threading.Thread(target=self._read_output_windows, daemon=True)
+            self._output_thread = threading.Thread(target=self._read_output_subprocess, daemon=True)
             self._output_thread.start()
-
             return True
         except Exception as e:
             print(f"[Process Error: {e}]")
+            return False
+
+    def _start_unix(self, cmd: str) -> bool:
+        """Start command with Unix PTY."""
+        try:
+            self.master_fd, slave_fd = pty.openpty()
+
+            # Set terminal size
+            winsize = struct.pack('HHHH', self.height, self.width, 0, 0)
+            fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
+
+            self.process = subprocess.Popen(
+                cmd,
+                shell=True,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                close_fds=True,
+            )
+            os.close(slave_fd)
+
+            # Set master to non-blocking
+            flags = fcntl.fcntl(self.master_fd, fcntl.F_GETFL)
+            fcntl.fcntl(self.master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+            self.running = True
+            self._output_thread = threading.Thread(target=self._read_output_unix, daemon=True)
+            self._output_thread.start()
+            return True
+        except Exception as e:
+            print(f"[PTY Error: {e}]")
             return False
 
     def _read_output_unix(self):
@@ -146,11 +182,10 @@ class PTYRunner:
                         break
             except Exception:
                 break
-
         self.running = False
 
-    def _read_output_windows(self):
-        """Read output from Windows subprocess."""
+    def _read_output_subprocess(self):
+        """Read output from subprocess (Windows fallback)."""
         while self.running and self.process and self.process.stdout:
             try:
                 data = self.process.stdout.read(1)
@@ -163,7 +198,6 @@ class PTYRunner:
                     break
             except Exception:
                 break
-
         self.running = False
 
     def send_input(self, text: str):
@@ -171,13 +205,23 @@ class PTYRunner:
         if not self.running:
             return
 
+        # WinPTY
+        if hasattr(self, '_winpty') and self._winpty:
+            try:
+                self._winpty.write(text)
+            except Exception:
+                pass
+            return
+
         data = text.encode('utf-8')
 
-        if HAS_PTY and self.master_fd is not None:
+        # Unix PTY
+        if self.master_fd is not None:
             try:
                 os.write(self.master_fd, data)
             except Exception:
                 pass
+        # Subprocess fallback
         elif self.process and self.process.stdin:
             try:
                 self.process.stdin.write(data)
@@ -187,40 +231,15 @@ class PTYRunner:
 
     def send_key(self, key: str):
         """Send a special key to the process."""
-        # Convert key name to escape sequence
         key_sequences = {
-            # Arrow keys
-            "up": "\x1b[A",
-            "down": "\x1b[B",
-            "right": "\x1b[C",
-            "left": "\x1b[D",
-            # Navigation
-            "home": "\x1b[H",
-            "end": "\x1b[F",
-            "pageup": "\x1b[5~",
-            "pagedown": "\x1b[6~",
-            "insert": "\x1b[2~",
-            "delete": "\x1b[3~",
-            # Control
-            "enter": "\r",
-            "return": "\r",
-            "tab": "\t",
-            "backspace": "\x7f",
-            "escape": "\x1b",
-            "space": " ",
-            # Function keys
-            "f1": "\x1bOP",
-            "f2": "\x1bOQ",
-            "f3": "\x1bOR",
-            "f4": "\x1bOS",
-            "f5": "\x1b[15~",
-            "f6": "\x1b[17~",
-            "f7": "\x1b[18~",
-            "f8": "\x1b[19~",
-            "f9": "\x1b[20~",
-            "f10": "\x1b[21~",
-            "f11": "\x1b[23~",
-            "f12": "\x1b[24~",
+            "up": "\x1b[A", "down": "\x1b[B", "right": "\x1b[C", "left": "\x1b[D",
+            "home": "\x1b[H", "end": "\x1b[F", "pageup": "\x1b[5~", "pagedown": "\x1b[6~",
+            "insert": "\x1b[2~", "delete": "\x1b[3~",
+            "enter": "\r", "return": "\r", "tab": "\t", "backspace": "\x7f",
+            "escape": "\x1b", "space": " ",
+            "f1": "\x1bOP", "f2": "\x1bOQ", "f3": "\x1bOR", "f4": "\x1bOS",
+            "f5": "\x1b[15~", "f6": "\x1b[17~", "f7": "\x1b[18~", "f8": "\x1b[19~",
+            "f9": "\x1b[20~", "f10": "\x1b[21~", "f11": "\x1b[23~", "f12": "\x1b[24~",
         }
 
         key_lower = key.lower()
@@ -228,31 +247,17 @@ class PTYRunner:
         # Handle modifier combinations (ctrl+c, alt+x, etc.)
         if "+" in key_lower:
             parts = key_lower.split("+")
-            modifiers = parts[:-1]
-            base_key = parts[-1]
+            modifiers, base_key = parts[:-1], parts[-1]
 
             if "ctrl" in modifiers or "control" in modifiers:
-                # Ctrl+letter = ASCII 1-26
                 if len(base_key) == 1 and base_key.isalpha():
-                    code = ord(base_key.upper()) - ord('A') + 1
-                    self.send_input(chr(code))
-                    return
-                elif base_key == "c":
-                    self.send_input("\x03")  # Ctrl+C
-                    return
-                elif base_key == "d":
-                    self.send_input("\x04")  # Ctrl+D
-                    return
-                elif base_key == "z":
-                    self.send_input("\x1a")  # Ctrl+Z
+                    self.send_input(chr(ord(base_key.upper()) - ord('A') + 1))
                     return
 
             if "alt" in modifiers:
-                # Alt+key = ESC + key
-                if base_key in key_sequences:
-                    self.send_input("\x1b" + key_sequences[base_key])
-                elif len(base_key) == 1:
-                    self.send_input("\x1b" + base_key)
+                seq = key_sequences.get(base_key, base_key if len(base_key) == 1 else "")
+                if seq:
+                    self.send_input("\x1b" + seq)
                 return
 
         # Simple key
@@ -271,17 +276,29 @@ class PTYRunner:
         with self._lock:
             return self.emulator.get_lines()
 
+    def get_output_buffer(self) -> str:
+        """Get raw output buffer."""
+        with self._lock:
+            return self._output_buffer
+
+    def has_content(self) -> bool:
+        """Check if there's any content in the screen."""
+        with self._lock:
+            return any(line.strip() for line in self.emulator.get_lines())
+
     def is_running(self) -> bool:
         """Check if the process is still running."""
+        if hasattr(self, '_winpty') and self._winpty:
+            try:
+                return self._winpty.isalive()
+            except Exception:
+                return False
         if self.process:
             return self.process.poll() is None
-        return False
+        return self.running
 
     def wait(self, timeout: float = None) -> int | None:
-        """Wait for process to complete.
-
-        Returns exit code or None if timeout.
-        """
+        """Wait for process to complete. Returns exit code or None if timeout."""
         if self.process:
             try:
                 return self.process.wait(timeout=timeout)
@@ -293,6 +310,16 @@ class PTYRunner:
         """Stop the running process."""
         self.running = False
 
+        # Stop WinPTY
+        if hasattr(self, '_winpty') and self._winpty:
+            try:
+                self._winpty.write('exit\r\n')
+                time.sleep(0.1)
+            except Exception:
+                pass
+            self._winpty = None
+
+        # Stop subprocess
         if self.process:
             try:
                 self.process.terminate()
@@ -302,15 +329,15 @@ class PTYRunner:
                     self.process.kill()
                 except Exception:
                     pass
+            self.process = None
 
-        if HAS_PTY and self.master_fd is not None:
+        # Close Unix PTY
+        if self.master_fd is not None:
             try:
                 os.close(self.master_fd)
             except Exception:
                 pass
             self.master_fd = None
-
-        self.process = None
 
     def __del__(self):
         """Cleanup on deletion."""
@@ -319,24 +346,11 @@ class PTYRunner:
 
 def run_with_pty(cmd: str, width: int = 80, height: int = 24,
                  timeout: float = 10) -> tuple[list[str], int]:
-    """Run a command with PTY and return final screen state.
-
-    Args:
-        cmd: Command to run
-        width: Terminal width
-        height: Terminal height
-        timeout: Max time to wait
-
-    Returns:
-        (lines, exit_code) - screen lines and process exit code
-    """
+    """Run a command with PTY and return final screen state."""
     runner = PTYRunner(width, height)
-
     if not runner.start(cmd):
         return [f"[Failed to start: {cmd}]"], 1
-
     exit_code = runner.wait(timeout=timeout)
     lines = runner.get_lines()
     runner.stop()
-
     return lines, exit_code if exit_code is not None else -1

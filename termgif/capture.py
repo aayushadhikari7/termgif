@@ -633,20 +633,59 @@ class LiveRecorder:
 
         # Clear renderer and add PTY screen lines
         self.renderer.state.lines = []
+
+        # Convert screen cells to text lines
+        # Note: For now we only extract plain text. Color support could be added
+        # by passing Cell objects to the renderer, but that requires renderer changes.
         for row in screen:
             line = ''.join(cell.char for cell in row).rstrip()
             self.renderer.state.lines.append(line)
 
-        # Position cursor at end
+        # Don't show prompt in TUI mode
         self.renderer.state.current_line = ""
 
-    def _capture_pty_frames(self, duration_ms: int, interval_ms: int = 50) -> None:
-        """Capture frames from PTY during a duration."""
+    def _wait_for_pty_content(self, timeout_ms: int = 2000, interval_ms: int = 50) -> bool:
+        """Wait for PTY to have actual visible content (not just escape sequences)."""
+        if not self.pty_runner:
+            return False
+
+        elapsed = 0
+        while elapsed < timeout_ms:
+            # Check if emulator has any non-empty visible content
+            if self.pty_runner.has_content():
+                return True
+
+            # Check raw output buffer for visible characters (not just escape sequences)
+            raw = self.pty_runner.get_output_buffer()
+            if raw:
+                # Count visible characters (exclude control chars and escape sequences)
+                import re
+                # Remove ANSI escape sequences
+                clean = re.sub(r'\x1b\[[^a-zA-Z]*[a-zA-Z]', '', raw)
+                clean = re.sub(r'\x1b[^[]', '', clean)
+                # Remove other control characters
+                visible = ''.join(c for c in clean if c.isprintable() or c in '\n\r\t')
+                if len(visible.strip()) > 5:  # Need actual visible content
+                    return True
+
+            time.sleep(interval_ms / 1000)
+            elapsed += interval_ms
+
+        return False
+
+    def _capture_pty_frames(self, duration_ms: int, interval_ms: int = 100) -> None:
+        """Capture frames from PTY during a duration.
+
+        Args:
+            duration_ms: Total duration to capture
+            interval_ms: Time between frames (default 100ms for smoother capture)
+        """
         frames_needed = max(1, duration_ms // interval_ms)
         for _ in range(frames_needed):
+            # Give PTY time to update before capturing
+            time.sleep(interval_ms / 1000)
             self._render_pty_screen()
             self.capture_frame(interval_ms)
-            time.sleep(interval_ms / 1000)
 
     def start_tui(self, cmd: str) -> bool:
         """Start a TUI app in PTY."""
@@ -770,7 +809,8 @@ class LiveRecorder:
                     self.capture_frame(100)
 
                     if cmd and not cmd.startswith("#"):
-                        if self._is_tui_command(cmd):
+                        is_tui = self._is_tui_command(cmd)
+                        if is_tui:
                             # TUI apps need PTY support
                             if not HAS_PTY:
                                 # Windows doesn't have PTY - show helpful message
@@ -782,11 +822,18 @@ class LiveRecorder:
                                 self.renderer.state.current_line = self.renderer.state.prompt
                                 self.capture_frame(2000)
                             elif self.start_tui(cmd):
-                                # Start TUI mode with PTY (Unix)
+                                # Start TUI mode with PTY
                                 in_tui_mode = True
-                                # Wait for TUI to initialize
-                                time.sleep(0.5)
-                                self._capture_pty_frames(500)
+
+                                # Wait for TUI to initialize and produce content
+                                if self._wait_for_pty_content(timeout_ms=3000):
+                                    # Got content, capture initial frames
+                                    self._capture_pty_frames(500)
+                                else:
+                                    # No content yet, try to continue anyway
+                                    time.sleep(0.5)
+                                    self._render_pty_screen()
+                                    self.capture_frame(100)
                             else:
                                 # PTY failed, show error
                                 self.renderer.state.lines.append(f"[Failed to start TUI: {cmd}]")
@@ -817,8 +864,7 @@ class LiveRecorder:
                     # Give TUI time to respond
                     self._capture_pty_frames(100)
                 else:
-                    # Not in TUI mode - key action doesn't do much
-                    print(f"[Note: 'key \"{action.key}\"' - no TUI running, ignoring]")
+                    # Not in TUI mode - key action has no effect
                     self.capture_frame(100)
 
         # Cleanup TUI if still running
