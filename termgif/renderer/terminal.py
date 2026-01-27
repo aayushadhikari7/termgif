@@ -23,7 +23,15 @@ class TerminalRenderer:
         self.title_font = get_font(int(s.font_size * s.scale * 0.9))
         self.state = TerminalState()
 
-        # Apply custom prompt if specified
+        # Apply custom user/hostname/symbol if specified (before custom prompt)
+        if s.user or s.hostname or s.symbol != "$":
+            self.state.custom_user = s.user
+            self.state.custom_hostname = s.hostname
+            self.state.custom_symbol = s.symbol
+            self.state._update_prompt()
+            self.state.current_line = self.state.prompt
+
+        # Apply custom prompt if specified (overrides user/hostname)
         if s.prompt:
             self.state.prompt = s.prompt
             self.state.current_line = s.prompt
@@ -156,14 +164,23 @@ class TerminalRenderer:
                 draw.text((x, y), user, font=self.font, fill=colors["green"])
                 x += len(user) * self.char_width
 
-                # @path in blue
-                path_part = rest.split(" $ ")[0]
-                draw.text((x, y), path_part, font=self.font, fill=colors["blue"])
-                x += len(path_part) * self.char_width
+                # Find the symbol (last non-space word before command)
+                # Format: @hostname symbol  (e.g., "@folder $ " or "@server # ")
+                symbol = self.state.custom_symbol or "$"
+                symbol_with_space = f" {symbol} "
 
-                # $ in lavender
-                draw.text((x, y), " $ ", font=self.font, fill=colors["lavender"])
-                x += 3 * self.char_width
+                if symbol_with_space in rest:
+                    path_part = rest.split(symbol_with_space)[0]
+                    draw.text((x, y), path_part, font=self.font, fill=colors["blue"])
+                    x += len(path_part) * self.char_width
+
+                    # Symbol in lavender
+                    draw.text((x, y), symbol_with_space, font=self.font, fill=colors["lavender"])
+                    x += len(symbol_with_space) * self.char_width
+                else:
+                    # Fallback: draw rest in blue
+                    draw.text((x, y), rest, font=self.font, fill=colors["blue"])
+                    x += len(rest) * self.char_width
 
                 # Command in bright text
                 cmd = line[len(prompt):]

@@ -9,7 +9,7 @@ class TapeConfig:
     width: int = 80
     height: int = 24
     font_size: int = 14
-    typing_speed_ms: int = 50
+    typing_speed_ms: int = 40  # Typing speed per character (lower = faster/smoother)
     loop: int = 0  # 0 = infinite, 1 = play once, N = play N times
     title: str = "termgif"  # Window title (customizable for your project)
     quality: int = 2  # Render scale (1=fast, 2=smooth, 3=ultra)
@@ -18,6 +18,9 @@ class TapeConfig:
     theme: str = "mocha"  # Color theme (mocha, latte, frappe, macchiato, dracula, nord)
     padding: int = 20  # Padding around content
     prompt: str = ""  # Custom prompt (empty = auto-generate)
+    user: str = ""  # Username in prompt (empty = auto-detect from system)
+    hostname: str = ""  # Hostname/folder in prompt (empty = auto-detect from cwd)
+    symbol: str = "$"  # Prompt symbol ($ for user, # for root, etc.)
     start_delay: int = 500  # Initial delay in ms
     end_delay: int = 2000  # Final frame hold in ms
     cursor: str = "block"  # Cursor style (block, bar, underline)

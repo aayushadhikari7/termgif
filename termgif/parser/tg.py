@@ -60,6 +60,9 @@ class TokenType(Enum):
     AT_THEME = auto()
     AT_PADDING = auto()
     AT_PROMPT = auto()
+    AT_USER = auto()
+    AT_HOSTNAME = auto()
+    AT_SYMBOL = auto()
     AT_CURSOR = auto()
     AT_START = auto()
     AT_END = auto()
@@ -130,6 +133,9 @@ class TgTokenizer:
         "theme": TokenType.AT_THEME,
         "padding": TokenType.AT_PADDING,
         "prompt": TokenType.AT_PROMPT,
+        "user": TokenType.AT_USER,
+        "hostname": TokenType.AT_HOSTNAME,
+        "symbol": TokenType.AT_SYMBOL,
         "cursor": TokenType.AT_CURSOR,
         "start": TokenType.AT_START,
         "end": TokenType.AT_END,
@@ -460,6 +466,21 @@ class TgParser:
                 self._advance()
                 token = self._expect(TokenType.STRING)
                 config.prompt = token.value
+
+            elif token_type == TokenType.AT_USER:
+                self._advance()
+                token = self._expect(TokenType.STRING)
+                config.user = token.value
+
+            elif token_type == TokenType.AT_HOSTNAME:
+                self._advance()
+                token = self._expect(TokenType.STRING)
+                config.hostname = token.value
+
+            elif token_type == TokenType.AT_SYMBOL:
+                self._advance()
+                token = self._expect(TokenType.STRING)
+                config.symbol = token.value
 
             elif token_type == TokenType.AT_CURSOR:
                 self._advance()

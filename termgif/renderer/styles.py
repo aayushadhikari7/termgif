@@ -15,6 +15,9 @@ class TerminalStyle:
     chrome: bool = True
     theme: str = "mocha"
     prompt: str = ""  # Custom prompt
+    user: str = ""  # Username in prompt (empty = auto-detect)
+    hostname: str = ""  # Hostname/folder in prompt (empty = auto-detect)
+    symbol: str = "$"  # Prompt symbol ($ for user, # for root)
 
     cursor: str = "block"  # block, bar, underline
 
@@ -49,6 +52,10 @@ class TerminalState:
     cwd: str = ""
     # Styled lines for native color mode (list of lists of StyledCell)
     styled_lines: list[list[StyledCell]] | None = None
+    # Custom user/hostname/symbol for prompt
+    custom_user: str = ""
+    custom_hostname: str = ""
+    custom_symbol: str = "$"
 
     def __post_init__(self):
         self.cwd = os.getcwd()
@@ -56,9 +63,10 @@ class TerminalState:
         self.current_line = self.prompt
 
     def _update_prompt(self):
-        user = os.environ.get("USER", os.environ.get("USERNAME", "user"))
-        path = os.path.basename(self.cwd) or "~"
-        self.prompt = f"{user}@{path} $ "
+        user = self.custom_user or os.environ.get("USER", os.environ.get("USERNAME", "user"))
+        hostname = self.custom_hostname or os.path.basename(self.cwd) or "~"
+        symbol = self.custom_symbol or "$"
+        self.prompt = f"{user}@{hostname} {symbol} "
 
 
 def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
