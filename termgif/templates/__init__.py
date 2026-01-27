@@ -44,17 +44,17 @@ def list_templates() -> list[str]:
     return sorted(_TEMPLATES.keys())
 
 
-def render_template(name: str, **kwargs) -> str:
+def render_template(template_name: str, **kwargs) -> str:
     """Get a template and format it with provided variables.
 
     Args:
-        name: Template name
-        **kwargs: Variables to substitute
+        template_name: Template name
+        **kwargs: Variables to substitute (name, title, etc.)
 
     Returns:
         Formatted template content
     """
-    template = get_template(name)
+    template = get_template(template_name)
 
     # Default values
     defaults = {
