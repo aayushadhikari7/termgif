@@ -13,60 +13,6 @@ class SimulatedRecorder(BaseRecorder):
     This is safe mode - no real commands run.
     """
 
-    def _generate_fake_output(self, cmd: str) -> str:
-        """Generate fake output for common commands in simulate mode.
-
-        This ensures --simulate NEVER runs real commands.
-        """
-        cmd_lower = cmd.lower().strip()
-
-        # Common commands with fake outputs
-        if cmd_lower.startswith("echo "):
-            # Echo just returns what's after echo
-            return cmd[5:].strip().strip("'\"")
-
-        if cmd_lower == "ls" or cmd_lower.startswith("ls "):
-            return "file1.txt  file2.txt  folder/"
-
-        if cmd_lower == "pwd":
-            return "/home/user/project"
-
-        if cmd_lower.startswith("cat "):
-            return "[file contents]"
-
-        if cmd_lower == "git status":
-            return "On branch main\nnothing to commit, working tree clean"
-
-        if cmd_lower == "git log" or cmd_lower.startswith("git log "):
-            return "commit abc123\nAuthor: User\nDate: Today\n\n    Initial commit"
-
-        if cmd_lower.startswith("git "):
-            return ""  # Other git commands: no output (safe)
-
-        if cmd_lower == "npm list" or cmd_lower.startswith("npm list "):
-            return "project@1.0.0\n+-- package@1.0.0"
-
-        if cmd_lower.startswith("python") or cmd_lower.startswith("python3"):
-            return ""
-
-        if cmd_lower == "docker ps":
-            return "CONTAINER ID   IMAGE   STATUS"
-
-        if cmd_lower == "docker images":
-            return "REPOSITORY   TAG   IMAGE ID"
-
-        if cmd_lower.startswith("curl "):
-            return '{"status": "ok"}'
-
-        if cmd_lower == "whoami":
-            return "user"
-
-        if cmd_lower == "date":
-            return "Mon Jan 27 12:00:00 UTC 2025"
-
-        # Default: return empty (no output shown)
-        return ""
-
     def run_action(self, action: Action) -> None:
         """Execute a single action.
 
@@ -81,15 +27,9 @@ class SimulatedRecorder(BaseRecorder):
 
         elif isinstance(action, EnterAction):
             # Press enter - but DO NOT execute command in simulate mode!
-            cmd = self.renderer.press_enter()
+            # We just show the typing, no output (safe and honest)
+            self.renderer.press_enter()
             self.capture_frame(100)
-
-            # In simulate mode, show fake output instead of running real commands
-            if cmd and not cmd.startswith("#"):
-                fake_output = self._generate_fake_output(cmd)
-                if fake_output:
-                    self.renderer.add_output(fake_output)
-                    self.capture_frame(100)
 
         elif isinstance(action, SleepAction):
             # Just hold the current frame
