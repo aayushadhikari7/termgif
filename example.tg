@@ -1,27 +1,88 @@
-// =============================================
-// example.tg - termgif demo
-// Run with: termgif example
-// =============================================
+// example.tg - termgif recording script
+// Run: termgif example
+//
+// Modes:
+//   termgif example             <- runs real commands (default)
+//   termgif example --simulate  <- safe mode, typing only, no execution
+//   termgif example -f mp4      <- output as MP4 instead of GIF
+//   termgif example --watch     <- auto-regenerate on save
 
-// ------------------- CONFIG -------------------
+// ============================================================================
+// CONFIGURATION - Customize your recording
+// ============================================================================
+
 @output "example.gif"
-@size 80x20
-@font 16
-@speed 60ms
 @title "termgif demo"
-@theme "mocha"
-@radius 10
+@theme "mocha"               // mocha, dracula, nord, tokyo, gruvbox, latte
 
-// ------------------- SCRIPT -------------------
+// Terminal size & appearance
+@size 80x20               // terminal size (columns x rows)
+@font 16                  // font size in pixels
+// @padding 20              // padding around content
+// @quality 2               // render quality (1=fast, 2=smooth, 3=ultra)
 
-// Welcome message (works on all platforms)
+// Prompt customization (customize your terminal prompt!)
+// @user "demo"             // username (default: your system username)
+// @hostname "myproject"    // folder/hostname (default: current directory)
+// @symbol "$"              // prompt symbol: $ for user, # for root, > etc.
+// @prompt ">>> "           // OR set entire custom prompt (overrides above)
+
+// Timing
+// @fps 10                  // frames per second
+@speed 40ms               // typing speed (lower = faster/smoother)
+// @start 500ms             // delay before first action
+// @end 2s                  // delay after last action
+
+// Output format
+// @format "gif"            // gif, webp, mp4, webm, apng, svg
+
+// Window style
+// @bare                    // no window chrome (border/title)
+// @radius 10               // corner radius (0 = sharp corners)
+// @cursor "block"          // cursor style: block, bar, underline
+
+// ============================================================================
+// ACTIONS - Your commands go here
+// ============================================================================
+
+// Basic syntax:
+//   -> "text"     <- type text
+//   >>            <- press Enter
+//   -> "text" >>  <- type and press Enter
+//   ~1s           <- wait 1 second
+//   ~500ms        <- wait 500 milliseconds
+
+// Example commands
 -> "echo Hello, termgif!" >>
 ~1s
 
-// Show Python version (cross-platform)
 -> "python --version" >>
 ~800ms
 
-// Show pip packages (cross-platform)
 -> "pip list" >>
 ~2s
+
+// Uncomment below for more examples:
+
+// -> "ls -la" >>
+// ~2s
+
+// -> "git status" >>
+// ~1s
+
+// ============================================================================
+// TUI APPS (vim, htop, etc.) - requires: termgif example --terminal --native
+// ============================================================================
+
+// Uncomment for TUI app recording:
+// @native                   // preserve app colors
+
+// key "escape"              // press Escape
+// key "enter"               // press Enter
+// key "up" / "down"         // arrow keys
+// key "ctrl+c"              // Ctrl+C
+
+// ============================================================================
+// MORE TEMPLATES: termgif templates
+// CREATE FROM TEMPLATE: termgif create myname --template git
+// ============================================================================
