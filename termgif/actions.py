@@ -34,5 +34,35 @@ class KeyAction:
     key: str
 
 
+@dataclass
+class HideAction:
+    """Pause frame capturing (recording continues but frames not saved)."""
+    pass
+
+
+@dataclass
+class ShowAction:
+    """Resume frame capturing."""
+    pass
+
+
+@dataclass
+class ScreenshotAction:
+    """Capture current frame as a separate PNG file."""
+    filename: str
+
+
+@dataclass
+class MarkerAction:
+    """Add a named marker/chapter at this point in the recording."""
+    name: str
+
+
+@dataclass
+class RequireAction:
+    """Check that a command/program exists before recording."""
+    command: str
+
+
 # Action type alias for type hints
-Action = TypeAction | EnterAction | SleepAction | KeyAction
+Action = TypeAction | EnterAction | SleepAction | KeyAction | HideAction | ShowAction | ScreenshotAction | MarkerAction | RequireAction
