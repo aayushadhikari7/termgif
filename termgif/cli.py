@@ -34,22 +34,95 @@ def _check_first_run():
         console.print()
 
 
-# Legacy boilerplate for backwards compatibility
+# Comprehensive boilerplate for new scripts
 BOILERPLATE = '''// {name}.tg - termgif recording script
 // Run: termgif {name}
+//
+// Modes:
+//   termgif {name}             <- runs real commands (default)
+//   termgif {name} --simulate  <- safe mode, typing only, no execution
+//   termgif {name} -f mp4      <- output as MP4 instead of GIF
+//   termgif {name} --watch     <- auto-regenerate on save
+
+// ============================================================================
+// CONFIGURATION - Customize your recording
+// ============================================================================
 
 @output "{name}.gif"
 @title "{name}"
-@theme "mocha"
+@theme "mocha"               // mocha, dracula, nord, tokyo, gruvbox, latte
 
-// Simple commands
--> "echo Hello, World!" >>
+// Terminal size & appearance
+// @size 80x24              // terminal size (columns x rows)
+// @font 14                 // font size in pixels
+// @padding 20              // padding around content
+// @quality 2               // render quality (1=fast, 2=smooth, 3=ultra)
+
+// Prompt customization (customize your terminal prompt!)
+// @user "demo"             // username (default: your system username)
+// @hostname "myproject"    // folder/hostname (default: current directory)
+// @symbol "$"              // prompt symbol: $ for user, # for root, > etc.
+// @prompt ">>> "           // OR set entire custom prompt (overrides above)
+
+// Timing
+// @fps 10                  // frames per second
+// @speed 40ms              // typing speed (lower = faster/smoother)
+// @start 500ms             // delay before first action
+// @end 2s                  // delay after last action
+
+// Output format
+// @format "gif"            // gif, webp, mp4, webm, apng, svg
+
+// Window style
+// @bare                    // no window chrome (border/title)
+// @radius 10               // corner radius (0 = sharp corners)
+// @cursor "block"          // cursor style: block, bar, underline
+
+// ============================================================================
+// ACTIONS - Your commands go here
+// ============================================================================
+
+// Basic syntax:
+//   -> "text"     <- type text
+//   >>            <- press Enter
+//   -> "text" >>  <- type and press Enter
+//   ~1s           <- wait 1 second
+//   ~500ms        <- wait 500 milliseconds
+
+// Example commands (edit these!)
+-> "echo Hello from termgif!" >>
 ~1s
 
--> "ls -la" >>
-~2s
+-> "echo Your commands go here" >>
+~1s
 
-// See more examples: termgif templates
+// Uncomment below for more examples:
+
+// -> "ls -la" >>
+// ~2s
+
+// -> "pwd" >>
+// ~1s
+
+// -> "date" >>
+// ~1s
+
+// ============================================================================
+// TUI APPS (vim, htop, etc.) - requires: termgif {name} --terminal --native
+// ============================================================================
+
+// Uncomment for TUI app recording:
+// @native                   // preserve app colors
+
+// key "escape"              // press Escape
+// key "enter"               // press Enter
+// key "up" / "down"         // arrow keys
+// key "ctrl+c"              // Ctrl+C
+
+// ============================================================================
+// MORE TEMPLATES: termgif templates
+// CREATE FROM TEMPLATE: termgif create myname --template git
+// ============================================================================
 '''
 
 
@@ -304,6 +377,7 @@ def cmd_templates():
         "npm": "npm workflow (init, install, list)",
         "docker": "Docker commands (ps, images, build, run)",
         "python": "Python REPL demo",
+        "pip": "pip workflow (install, list, show)",
         "vim": "Vim editing demo (requires --native)",
         "htop": "htop system monitor (requires --native)",
         "fzf": "fzf fuzzy finder (requires --terminal)",
