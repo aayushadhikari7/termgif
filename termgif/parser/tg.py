@@ -42,7 +42,10 @@ from pathlib import Path
 from typing import Iterator
 
 from ..config import TapeConfig, parse_duration
-from ..actions import TypeAction, EnterAction, SleepAction, KeyAction
+from ..actions import (
+    TypeAction, EnterAction, SleepAction, KeyAction,
+    HideAction, ShowAction, ScreenshotAction, MarkerAction, RequireAction
+)
 
 
 class TokenType(Enum):
@@ -90,11 +93,25 @@ class TokenType(Enum):
     AT_CWD = auto()
     AT_TIMEOUT = auto()
 
+    # New v0.3.1 visual customization directives
+    AT_CURSOR_COLOR = auto()
+    AT_LINE_HEIGHT = auto()
+    AT_LETTER_SPACING = auto()
+    AT_SHADOW = auto()
+    AT_SHADOW_OPACITY = auto()
+    AT_GLOW = auto()
+    AT_WINDOW_FRAME = auto()
+
     # Actions
     ARROW = auto()          # ->
     DOUBLE_ARROW = auto()   # >>
     TILDE = auto()          # ~ (with duration)
     KEY = auto()            # key "..." (special key press)
+    HIDE = auto()           # hide (pause frame capture)
+    SHOW = auto()           # show (resume frame capture)
+    SCREENSHOT = auto()     # screenshot "filename.png"
+    MARKER = auto()         # marker "Chapter Name"
+    REQUIRE = auto()        # require "command"
 
     # Values
     STRING = auto()
@@ -161,6 +178,14 @@ class TgTokenizer:
         "env": TokenType.AT_ENV,
         "cwd": TokenType.AT_CWD,
         "timeout": TokenType.AT_TIMEOUT,
+        # v0.3.1 visual customization
+        "cursor-color": TokenType.AT_CURSOR_COLOR,
+        "line-height": TokenType.AT_LINE_HEIGHT,
+        "letter-spacing": TokenType.AT_LETTER_SPACING,
+        "shadow": TokenType.AT_SHADOW,
+        "shadow-opacity": TokenType.AT_SHADOW_OPACITY,
+        "glow": TokenType.AT_GLOW,
+        "window-frame": TokenType.AT_WINDOW_FRAME,
     }
 
     def __init__(self, content: str):
@@ -344,6 +369,21 @@ class TgTokenizer:
 
                 if keyword == "key":
                     yield Token(TokenType.KEY, "key", self.line, start_col)
+                    continue
+                elif keyword == "hide":
+                    yield Token(TokenType.HIDE, "hide", self.line, start_col)
+                    continue
+                elif keyword == "show":
+                    yield Token(TokenType.SHOW, "show", self.line, start_col)
+                    continue
+                elif keyword == "screenshot":
+                    yield Token(TokenType.SCREENSHOT, "screenshot", self.line, start_col)
+                    continue
+                elif keyword == "marker":
+                    yield Token(TokenType.MARKER, "marker", self.line, start_col)
+                    continue
+                elif keyword == "require":
+                    yield Token(TokenType.REQUIRE, "require", self.line, start_col)
                     continue
                 elif keyword in ("true", "false"):
                     yield Token(TokenType.BOOLEAN, keyword, self.line, start_col)
@@ -606,6 +646,42 @@ class TgParser:
                 token = self._expect(TokenType.DURATION)
                 config.timeout = parse_duration(token.value)
 
+            # v0.3.1 visual customization directives
+            elif token_type == TokenType.AT_CURSOR_COLOR:
+                self._advance()
+                token = self._expect(TokenType.STRING)
+                config.cursor_color = token.value
+
+            elif token_type == TokenType.AT_LINE_HEIGHT:
+                self._advance()
+                token = self._expect(TokenType.NUMBER)
+                config.line_height = float(token.value)
+
+            elif token_type == TokenType.AT_LETTER_SPACING:
+                self._advance()
+                token = self._expect(TokenType.NUMBER)
+                config.letter_spacing = int(token.value)
+
+            elif token_type == TokenType.AT_SHADOW:
+                self._advance()
+                token = self._expect(TokenType.BOOLEAN)
+                config.shadow = token.value.lower() == "true"
+
+            elif token_type == TokenType.AT_SHADOW_OPACITY:
+                self._advance()
+                token = self._expect(TokenType.NUMBER)
+                config.shadow_opacity = max(0, min(255, int(token.value)))
+
+            elif token_type == TokenType.AT_GLOW:
+                self._advance()
+                token = self._expect(TokenType.BOOLEAN)
+                config.glow = token.value.lower() == "true"
+
+            elif token_type == TokenType.AT_WINDOW_FRAME:
+                self._advance()
+                token = self._expect(TokenType.STRING)
+                config.window_frame = token.value.lower()
+
             # Actions
             elif token_type == TokenType.ARROW:
                 self._advance()
@@ -628,6 +704,29 @@ class TgParser:
                 self._advance()
                 token = self._expect(TokenType.STRING)
                 actions.append(KeyAction(key=token.value.lower()))
+
+            elif token_type == TokenType.HIDE:
+                self._advance()
+                actions.append(HideAction())
+
+            elif token_type == TokenType.SHOW:
+                self._advance()
+                actions.append(ShowAction())
+
+            elif token_type == TokenType.SCREENSHOT:
+                self._advance()
+                token = self._expect(TokenType.STRING)
+                actions.append(ScreenshotAction(filename=token.value))
+
+            elif token_type == TokenType.MARKER:
+                self._advance()
+                token = self._expect(TokenType.STRING)
+                actions.append(MarkerAction(name=token.value))
+
+            elif token_type == TokenType.REQUIRE:
+                self._advance()
+                token = self._expect(TokenType.STRING)
+                actions.append(RequireAction(command=token.value))
 
             else:
                 raise SyntaxError(
