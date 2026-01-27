@@ -956,9 +956,9 @@ class LiveRecorder:
             elif isinstance(action, SleepAction):
                 if in_tui_mode:
                     # Capture PTY frames during sleep
-                    self._capture_pty_frames(action.ms)
+                    self._capture_pty_frames(action.duration_ms)
                 else:
-                    self.capture_frame(action.ms)
+                    self.capture_frame(action.duration_ms)
 
             elif isinstance(action, KeyAction):
                 if in_tui_mode:
@@ -1431,7 +1431,7 @@ class TerminalRecorder:
                 actions.append(TypeAction(text=cmd))
                 actions.append(EnterAction())
             if sleep_ms > 0:
-                actions.append(SleepAction(ms=sleep_ms))
+                actions.append(SleepAction(duration_ms=sleep_ms))
 
         self.run_actions(actions, typing_speed_ms)
 
@@ -1488,7 +1488,7 @@ class TerminalRecorder:
 
             elif isinstance(action, SleepAction):
                 # Capture frames during the sleep period
-                self._capture_frames_for_duration(action.ms)
+                self._capture_frames_for_duration(action.duration_ms)
 
             elif isinstance(action, KeyAction):
                 # Use keyboard simulation for special keys (TUI interaction)
