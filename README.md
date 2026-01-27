@@ -1,12 +1,18 @@
 # termgif
 
-[![PyPI version](https://img.shields.io/pypi/v/termgif)](https://pypi.org/project/termgif/)
-[![Python](https://img.shields.io/pypi/pyversions/termgif)](https://pypi.org/project/termgif/)
-[![License](https://img.shields.io/github/license/aayushadhikari7/termgif)](https://github.com/aayushadhikari7/termgif/blob/main/LICENSE)
+[![PyPI version](https://img.shields.io/pypi/v/termgif?logo=pypi&logoColor=white)](https://pypi.org/project/termgif/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/aayushadhikari7/termgif/blob/main/LICENSE)
 
 Terminal recording studio. Create beautiful terminal recordings as GIF, MP4, WebP, and more.
 
 ![termgif demo](https://raw.githubusercontent.com/aayushadhikari7/termgif/main/assets/demo.gif)
+
+### Feature Showcase
+
+Full customization example with custom prompt, themes, markers, hide/show, and more:
+
+![termgif showcase](https://raw.githubusercontent.com/aayushadhikari7/termgif/main/assets/demo_showcase.gif)
 
 ## Features
 

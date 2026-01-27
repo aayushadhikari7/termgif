@@ -1,0 +1,77 @@
+// demo_showcase.tg - Epic showcase of termgif features
+// This demo shows off all the customization options!
+
+@output "demo_showcase.gif"
+@title "termgif showcase"
+@theme "dracula"
+@size 90x24
+@font 15
+@speed 35ms
+@radius 12
+
+// Custom prompt
+@user "demo"
+@hostname "termgif"
+@symbol ">"
+
+// Check we have echo
+require "echo"
+
+// Chapter 1
+marker "Introduction"
+
+-> "echo '=== termgif v0.3.1 ==='" >>
+~800ms
+
+-> "echo 'Terminal Recording Studio'" >>
+~600ms
+
+-> "echo ''" >>
+~200ms
+
+// Chapter 2
+marker "Features Demo"
+
+-> "echo 'Multiple formats: GIF, WebP, MP4, APNG, SVG'" >>
+~800ms
+
+-> "echo 'Custom themes: dracula, mocha, nord, tokyo...'" >>
+~800ms
+
+-> "echo 'Full prompt customization!'" >>
+~600ms
+
+// Hide boring part
+hide
+-> "echo 'this is hidden setup'" >>
+~50ms
+show
+
+// Chapter 3
+marker "Templates"
+
+-> "echo ''" >>
+~100ms
+
+-> "echo 'Built-in templates:'" >>
+~400ms
+
+-> "echo '  git, npm, docker, python, vim, htop...'" >>
+~800ms
+
+// Take a screenshot of this moment
+screenshot "assets/demo_screenshot.png"
+
+~500ms
+
+// Chapter 4
+marker "Finale"
+
+-> "echo ''" >>
+~200ms
+
+-> "echo 'pip install termgif'" >>
+~1s
+
+-> "echo 'Star us on GitHub!'" >>
+~2s
