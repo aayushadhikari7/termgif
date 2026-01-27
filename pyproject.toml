@@ -4,19 +4,35 @@ build-backend = "hatchling.build"
 
 [project]
 name = "termgif"
-version = "0.2.1"
-description = "Dead simple terminal GIF recorder"
+version = "0.3.0"
+description = "Terminal recording studio - GIF, MP4, WebP, and more"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-keywords = ["terminal", "gif", "recording", "cli", "demo", "cross-platform"]
+keywords = ["terminal", "gif", "recording", "cli", "demo", "cross-platform", "mp4", "webp", "asciinema"]
 dependencies = [
     "pillow>=10.0.0",
     "rich>=13.0.0",
     "typer>=0.9.0",
 ]
 
+[project.optional-dependencies]
+video = [
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+]
+share = [
+    "requests>=2.28.0",
+]
+all = [
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "requests>=2.28.0",
+    "watchdog>=3.0.0",
+]
+
 # Note: --terminal screen capture uses PIL's ImageGrab (Windows/macOS only)
+# Note: MP4/WebM export requires ffmpeg to be installed
 
 [project.scripts]
 termgif = "termgif.cli:main"
