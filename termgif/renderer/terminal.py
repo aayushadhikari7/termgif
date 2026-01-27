@@ -178,6 +178,31 @@ class TerminalRenderer:
             # Output in slightly dimmer text
             draw.text((x, y), line, font=self.font, fill=colors["subtext1"])
 
+    def render_lines(self, lines: list[str]) -> Image.Image:
+        """Render given lines to an image (for external data like asciinema).
+
+        Args:
+            lines: List of strings to render
+
+        Returns:
+            Rendered PIL Image
+        """
+        # Save current state
+        old_lines = self.state.lines
+        old_current = self.state.current_line
+
+        # Set lines and render
+        self.state.lines = lines[:-1] if lines else []
+        self.state.current_line = lines[-1] if lines else ""
+
+        result = self.render()
+
+        # Restore state
+        self.state.lines = old_lines
+        self.state.current_line = old_current
+
+        return result
+
     def render(self) -> Image.Image:
         """Render terminal to high-quality image."""
         s = self.style

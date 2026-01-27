@@ -222,7 +222,8 @@ def render_cast_to_frames(
         Tuple of (list of PIL Images, list of durations in ms)
     """
     from ..renderer.terminal import TerminalRenderer
-    from ..pty.emulator import SimpleTerminalEmulator
+    from ..renderer.styles import TerminalStyle
+    from ..pty.emulator import TerminalEmulator
 
     header, events = parse_cast_file(cast_path)
 
@@ -235,9 +236,19 @@ def render_cast_to_frames(
         config.width = width
         config.height = height
 
+    # Create TerminalStyle from TapeConfig
+    style = TerminalStyle(
+        width=config.width,
+        height=config.height,
+        font_size=config.font_size,
+        padding=config.padding,
+        title=config.title or header.get("title", "termgif"),
+        theme=config.theme,
+    )
+
     # Create renderer and emulator
-    renderer = TerminalRenderer(config)
-    emulator = SimpleTerminalEmulator(width, height)
+    renderer = TerminalRenderer(style)
+    emulator = TerminalEmulator(width, height)
 
     frames = []
     durations = []
@@ -253,11 +264,11 @@ def render_cast_to_frames(
         # If we've passed the frame boundary, render a frame
         while event_time_ms >= current_frame_time + frame_interval:
             if pending_output:
-                emulator.write(pending_output)
+                emulator.feed(pending_output)
                 pending_output = ""
 
             # Render current state
-            frame = renderer.render_frame(emulator.get_lines())
+            frame = renderer.render_lines(emulator.get_lines())
             frames.append(frame)
             durations.append(int(frame_interval))
             current_frame_time += frame_interval
@@ -268,14 +279,14 @@ def render_cast_to_frames(
 
     # Render final frame if there's pending output
     if pending_output:
-        emulator.write(pending_output)
-        frame = renderer.render_frame(emulator.get_lines())
+        emulator.feed(pending_output)
+        frame = renderer.render_lines(emulator.get_lines())
         frames.append(frame)
         durations.append(int(frame_interval))
 
     # Ensure we have at least one frame
     if not frames:
-        frame = renderer.render_frame(emulator.get_lines())
+        frame = renderer.render_lines(emulator.get_lines())
         frames.append(frame)
         durations.append(1000)
 
