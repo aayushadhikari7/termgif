@@ -30,6 +30,8 @@ class SimulatedRecorder(BaseRecorder):
             # We just show the typing, no output (safe and honest)
             self.renderer.press_enter()
             self.capture_frame(100)
+            # Restore the prompt for the next line
+            self.renderer.state.current_line = self.renderer.state.prompt
 
         elif isinstance(action, SleepAction):
             # Just hold the current frame
