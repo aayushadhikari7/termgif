@@ -601,7 +601,7 @@ class TgParser:
 
             elif token_type == TokenType.DURATION:
                 token = self._advance()
-                actions.append(SleepAction(ms=parse_duration(token.value)))
+                actions.append(SleepAction(duration_ms=parse_duration(token.value)))
 
             elif token_type == TokenType.KEY:
                 self._advance()

@@ -498,7 +498,7 @@ class TgParser:
             elif self._current().type == TokenType.DURATION:
                 # Standalone ~duration (tilde was consumed by tokenizer)
                 token = self._advance()
-                actions.append(SleepAction(ms=parse_duration(token.value)))
+                actions.append(SleepAction(duration_ms=parse_duration(token.value)))
 
             elif self._current().type == TokenType.KEY:
                 # key "escape" - special key press for TUI interaction

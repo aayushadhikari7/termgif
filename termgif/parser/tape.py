@@ -62,7 +62,7 @@ def parse_tape(path: Path) -> tuple[TapeConfig, list]:
         # Sleep
         if line.lower().startswith("sleep "):
             duration = parse_duration(line[6:])
-            actions.append(SleepAction(ms=duration))
+            actions.append(SleepAction(duration_ms=duration))
             continue
 
     return config, actions
