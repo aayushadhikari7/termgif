@@ -21,6 +21,16 @@ class TapeConfig:
     user: str = ""  # Username in prompt (empty = auto-detect from system)
     hostname: str = ""  # Hostname/folder in prompt (empty = auto-detect from cwd)
     symbol: str = "$"  # Prompt symbol ($ for user, # for root, etc.)
+
+    # Advanced visual customization
+    cursor_color: str = ""  # Cursor color (empty = use theme's lavender)
+    line_height: float = 1.4  # Line height multiplier
+    letter_spacing: int = 0  # Extra spacing between characters in pixels
+    shadow: bool = True  # Enable window shadow
+    shadow_opacity: int = 100  # Shadow opacity (0-255)
+    glow: bool = True  # Enable subtle glow effect around window
+    window_frame: str = "macos"  # Window frame style: macos, windows, minimal, none
+
     start_delay: int = 500  # Initial delay in ms
     end_delay: int = 2000  # Final frame hold in ms
     cursor: str = "block"  # Cursor style (block, bar, underline)
