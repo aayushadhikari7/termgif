@@ -17,7 +17,7 @@ class EnterAction:
 @dataclass
 class SleepAction:
     """Wait for duration."""
-    ms: int
+    duration_ms: int
 
 
 @dataclass
