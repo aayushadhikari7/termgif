@@ -77,17 +77,28 @@ BOILERPLATE = '''// {name}.tg - termgif recording script
 // @bare                    // no window chrome (border/title)
 // @radius 10               // corner radius (0 = sharp corners)
 // @cursor "block"          // cursor style: block, bar, underline
+// @cursor-color "#cba6f7"  // custom cursor color (hex)
+// @window-frame "macos"    // frame style: macos, windows, minimal, none
+// @shadow true             // enable window shadow
+// @glow true               // enable subtle glow effect
+// @line-height 1.4         // line height multiplier
+// @letter-spacing 0        // extra character spacing (pixels)
 
 // ============================================================================
 // ACTIONS - Your commands go here
 // ============================================================================
 
 // Basic syntax:
-//   -> "text"     <- type text
-//   >>            <- press Enter
-//   -> "text" >>  <- type and press Enter
-//   ~1s           <- wait 1 second
-//   ~500ms        <- wait 500 milliseconds
+//   -> "text"         <- type text
+//   >>                <- press Enter
+//   -> "text" >>      <- type and press Enter
+//   ~1s               <- wait 1 second
+//   ~500ms            <- wait 500 milliseconds
+//   hide              <- pause frame capture
+//   show              <- resume frame capture
+//   screenshot "x.png" <- save current frame as PNG
+//   marker "name"     <- add chapter/marker
+//   require "cmd"     <- check command exists before recording
 
 // Example commands (edit these!)
 -> "echo Hello from termgif!" >>
