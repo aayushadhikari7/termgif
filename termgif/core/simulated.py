@@ -1,9 +1,13 @@
 """Simulated recorder - renders without executing commands."""
+import shutil
 from pathlib import Path
 
 from .recorder import BaseRecorder
 from ..config import TapeConfig
-from ..actions import Action, TypeAction, EnterAction, SleepAction, KeyAction
+from ..actions import (
+    Action, TypeAction, EnterAction, SleepAction, KeyAction,
+    HideAction, ShowAction, ScreenshotAction, MarkerAction, RequireAction
+)
 
 
 class SimulatedRecorder(BaseRecorder):
@@ -12,6 +16,17 @@ class SimulatedRecorder(BaseRecorder):
     Commands are displayed but NOT actually executed.
     This is safe mode - no real commands run.
     """
+
+    def __init__(self, config: TapeConfig):
+        super().__init__(config)
+        self.capturing = True  # For hide/show functionality
+        self.markers: list[tuple[str, int]] = []  # (name, frame_index)
+        self._saved_state = None  # Saved terminal state for hide/show
+
+    def capture_frame(self, duration_ms: int = 100) -> None:
+        """Capture frame only if capturing is enabled."""
+        if self.capturing:
+            super().capture_frame(duration_ms)
 
     def run_action(self, action: Action) -> None:
         """Execute a single action.
@@ -42,6 +57,39 @@ class SimulatedRecorder(BaseRecorder):
             # In simulated mode, we just pause briefly
             print(f"[Note: 'key \"{action.key}\"' requires --terminal mode for TUI interaction]")
             self.capture_frame(100)
+
+        elif isinstance(action, HideAction):
+            # Save terminal state and pause capturing
+            self._saved_state = {
+                'lines': self.renderer.state.lines.copy(),
+                'current_line': self.renderer.state.current_line,
+            }
+            self.capturing = False
+
+        elif isinstance(action, ShowAction):
+            # Restore terminal state and resume capturing
+            if self._saved_state:
+                self.renderer.state.lines = self._saved_state['lines']
+                self.renderer.state.current_line = self._saved_state['current_line']
+                self._saved_state = None
+            self.capturing = True
+
+        elif isinstance(action, ScreenshotAction):
+            # Save current frame as PNG
+            frame = self.renderer.render()
+            screenshot_path = Path(action.filename)
+            screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+            frame.save(screenshot_path, "PNG")
+            print(f"Screenshot saved: {screenshot_path}")
+
+        elif isinstance(action, MarkerAction):
+            # Record marker with current frame index
+            self.markers.append((action.name, len(self.frames)))
+
+        elif isinstance(action, RequireAction):
+            # Check if command exists
+            if not shutil.which(action.command):
+                raise RuntimeError(f"Required command not found: {action.command}")
 
     def run_actions(self, actions: list[Action]) -> None:
         """Run all actions from tape.

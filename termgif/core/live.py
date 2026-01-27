@@ -1,5 +1,6 @@
 """Live recorder - executes real commands with PTY support."""
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -7,7 +8,10 @@ from PIL import Image
 
 from .recorder import BaseRecorder
 from ..config import TapeConfig
-from ..actions import Action, TypeAction, EnterAction, SleepAction, KeyAction
+from ..actions import (
+    Action, TypeAction, EnterAction, SleepAction, KeyAction,
+    HideAction, ShowAction, ScreenshotAction, MarkerAction, RequireAction
+)
 from ..renderer import StyledCell
 
 
@@ -32,6 +36,16 @@ class LiveRecorder(BaseRecorder):
 
         # Native colors mode - preserve TUI app's colors
         self.native_colors = config.native_colors
+
+        # For hide/show functionality
+        self.capturing = True
+        self.markers: list[tuple[str, int]] = []  # (name, frame_index)
+        self._saved_state = None  # Saved terminal state for hide/show
+
+    def capture_frame(self, duration_ms: int = 100) -> None:
+        """Capture frame only if capturing is enabled."""
+        if self.capturing:
+            super().capture_frame(duration_ms)
 
     def _is_tui_command(self, cmd: str) -> bool:
         """Check if command is a known TUI app."""
@@ -290,6 +304,36 @@ class LiveRecorder(BaseRecorder):
                     self._capture_pty_frames(100)
                 else:
                     self.capture_frame(100)
+
+            elif isinstance(action, HideAction):
+                # Save terminal state and pause capturing
+                self._saved_state = {
+                    'lines': self.renderer.state.lines.copy(),
+                    'current_line': self.renderer.state.current_line,
+                }
+                self.capturing = False
+
+            elif isinstance(action, ShowAction):
+                # Restore terminal state and resume capturing
+                if self._saved_state:
+                    self.renderer.state.lines = self._saved_state['lines']
+                    self.renderer.state.current_line = self._saved_state['current_line']
+                    self._saved_state = None
+                self.capturing = True
+
+            elif isinstance(action, ScreenshotAction):
+                frame = self.renderer.render()
+                screenshot_path = Path(action.filename)
+                screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+                frame.save(screenshot_path, "PNG")
+                print(f"Screenshot saved: {screenshot_path}")
+
+            elif isinstance(action, MarkerAction):
+                self.markers.append((action.name, len(self.frames)))
+
+            elif isinstance(action, RequireAction):
+                if not shutil.which(action.command):
+                    raise RuntimeError(f"Required command not found: {action.command}")
 
         # Cleanup TUI if still running
         if in_tui_mode:
