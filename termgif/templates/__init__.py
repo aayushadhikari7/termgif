@@ -72,17 +72,55 @@ def render_template(template_name: str, **kwargs) -> str:
 
 register_template("basic", '''// {name}.tg - termgif recording script
 // Run: termgif {name}
+//
+// Modes:
+//   termgif {name}             <- runs real commands (default)
+//   termgif {name} --simulate  <- safe mode, typing only, no execution
+//   termgif {name} -f mp4      <- output as MP4 instead of GIF
+//   termgif {name} --watch     <- auto-regenerate on save
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
 
 @output "{name}.gif"
 @title "{title}"
-@theme "mocha"
+@theme "mocha"               // mocha, dracula, nord, tokyo, gruvbox, latte
 
-// Your commands here
--> "echo Hello, World!" >>
+// @size 80x24              // terminal size (columns x rows)
+// @fps 10                  // frames per second
+// @speed 50ms              // typing speed per character
+// @format "gif"            // gif, webp, mp4, webm, apng, svg
+// @bare                    // no window chrome
+
+// ============================================================================
+// COMMANDS
+// ============================================================================
+
+// Syntax:
+//   -> "text"     <- type text
+//   >>            <- press Enter
+//   -> "text" >>  <- type and press Enter
+//   ~1s           <- wait 1 second
+
+-> "echo Hello from termgif!" >>
 ~1s
 
--> "ls -la" >>
-~2s
+-> "echo Edit this file to add your commands" >>
+~1s
+
+// -> "ls -la" >>
+// ~2s
+
+// -> "pwd" >>
+// ~1s
+
+// ============================================================================
+// TUI APPS - requires: termgif {name} --terminal --native
+// ============================================================================
+
+// @native                   // preserve app colors
+// key "escape"              // special keys: escape, enter, tab, up, down, ctrl+c
 ''')
 
 register_template("git", '''// {name}.tg - Git workflow demo
@@ -311,7 +349,7 @@ register_template("api", '''// {name}.tg - API testing demo
 
 @output "{name}.gif"
 @title "API Testing"
-@theme "material"
+@theme "dracula"
 @size 100x24
 
 // GET request
@@ -321,4 +359,33 @@ register_template("api", '''// {name}.tg - API testing demo
 // POST request with data
 -> "curl -X POST -H \\"Content-Type: application/json\\" -d '{{\"key\":\"value\"}}' https://httpbin.org/post | jq '.json'" >>
 ~2s
+''')
+
+register_template("pip", '''// {name}.tg - pip workflow demo
+// Run: termgif {name}
+
+@output "{name}.gif"
+@title "pip Demo"
+@theme "mocha"
+@size 100x24
+
+// Check pip version
+-> "pip --version" >>
+~500ms
+
+// List installed packages
+-> "pip list" >>
+~1s
+
+// Install a package
+-> "pip install requests" >>
+~2s
+
+// Show package info
+-> "pip show requests" >>
+~1s
+
+// Uninstall (optional)
+// -> "pip uninstall requests -y" >>
+// ~1s
 ''')
