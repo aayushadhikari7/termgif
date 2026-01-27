@@ -191,7 +191,7 @@ class TerminalRecorder:
                 current_cmd = ""
 
             elif isinstance(action, SleepAction):
-                self._capture_frames_for_duration(action.ms)
+                self._capture_frames_for_duration(action.duration_ms)
 
             elif isinstance(action, KeyAction):
                 _reset_terminal_hwnd()

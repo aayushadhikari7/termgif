@@ -277,9 +277,9 @@ class LiveRecorder(BaseRecorder):
 
             elif isinstance(action, SleepAction):
                 if in_tui_mode:
-                    self._capture_pty_frames(action.ms)
+                    self._capture_pty_frames(action.duration_ms)
                 else:
-                    self.capture_frame(action.ms)
+                    self.capture_frame(action.duration_ms)
 
             elif isinstance(action, KeyAction):
                 if in_tui_mode:

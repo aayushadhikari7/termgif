@@ -37,7 +37,7 @@ class SimulatedRecorder(BaseRecorder):
 
         elif isinstance(action, SleepAction):
             # Just hold the current frame
-            self.capture_frame(action.ms)
+            self.capture_frame(action.duration_ms)
 
         elif isinstance(action, KeyAction):
             # KeyAction is only meaningful in --terminal mode
