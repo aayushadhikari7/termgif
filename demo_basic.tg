@@ -1,0 +1,13 @@
+// demo_basic.tg - termgif recording script
+// Run: termgif demo_basic
+
+@output "demo_basic.gif"
+@title "Demo_Basic"
+@theme "mocha"
+
+// Your commands here
+-> "echo Hello, World!" >>
+~1s
+
+-> "ls -la" >>
+~2s

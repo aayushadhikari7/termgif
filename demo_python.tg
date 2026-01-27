@@ -1,0 +1,31 @@
+// demo_python.tg - Python REPL demo
+// Run: termgif demo_python
+
+@output "demo_python.gif"
+@title "Python Demo"
+@theme "gruvbox"
+@size 80x24
+
+// Start Python
+-> "python3" >>
+~500ms
+
+// Simple calculation
+-> "2 + 2" >>
+~500ms
+
+// Define a function
+-> "def greet(name):" >>
+-> "    return f'Hello, {name}!'" >>
+~500ms
+
+-> "" >>
+~300ms
+
+// Call the function
+-> "greet('World')" >>
+~1s
+
+// Exit
+-> "exit()" >>
+~500ms

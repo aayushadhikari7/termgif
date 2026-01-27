@@ -1,0 +1,27 @@
+// demo_git.tg - Git workflow demo
+// Run: termgif demo_git
+
+@output "demo_git.gif"
+@title "Git Workflow"
+@theme "mocha"
+@size 100x24
+
+// Check status
+-> "git status" >>
+~1s
+
+// Stage changes
+-> "git add ." >>
+~500ms
+
+// Commit
+-> "git commit -m \"Update\"" >>
+~1s
+
+// View log
+-> "git log --oneline -5" >>
+~2s
+
+// Push changes
+-> "git push" >>
+~2s

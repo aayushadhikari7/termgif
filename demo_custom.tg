@@ -1,0 +1,25 @@
+// demo_custom.tg - Custom demo showcasing v0.3.0 features
+// Run: termgif demo_custom
+
+@output "demo_custom.gif"
+@title "termgif v0.3.0 Demo"
+@theme "dracula"
+@size 80x20
+@fps 12
+@speed 40ms
+
+// Show off termgif
+-> "echo '=== termgif v0.3.0 ==='" >>
+~1s
+
+-> "echo 'Multiple output formats: GIF, WebP, MP4, APNG, SVG'" >>
+~1s
+
+-> "echo 'Built-in templates: git, npm, docker, python, vim'" >>
+~1s
+
+-> "termgif templates" >>
+~2s
+
+-> "echo 'Thanks for using termgif!'" >>
+~2s
