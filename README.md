@@ -192,11 +192,21 @@ Directives configure the recording. They start with `@`.
 | `@speed` | `@speed 50ms` | Typing speed per character |
 | `@format` | `@format "mp4"` | Output format override |
 | `@title` | `@title "My Demo"` | Window title |
-| `@prompt` | `@prompt "$ "` | Shell prompt |
+| `@prompt` | `@prompt "$ "` | Full custom prompt |
+| `@user` | `@user "demo"` | Username in prompt |
+| `@hostname` | `@hostname "server"` | Hostname in prompt |
+| `@symbol` | `@symbol "#"` | Prompt symbol ($ or #) |
+| `@cursor` | `@cursor "bar"` | Cursor style: block, bar, underline |
+| `@cursor-color` | `@cursor-color "#cba6f7"` | Custom cursor color |
 | `@shell` | `@shell "zsh"` | Shell to use |
 | `@bare` | `@bare` | No window chrome (border/title) |
 | `@native` | `@native` | Preserve TUI app colors |
 | `@chrome` | `@chrome false` | Disable window chrome |
+| `@shadow` | `@shadow false` | Disable window shadow |
+| `@glow` | `@glow false` | Disable glow effect |
+| `@window-frame` | `@window-frame "minimal"` | Frame style: macos, windows, minimal, none |
+| `@line-height` | `@line-height 1.5` | Line height multiplier |
+| `@letter-spacing` | `@letter-spacing 1` | Extra character spacing |
 | `@start_delay` | `@start_delay 500ms` | Delay before first action |
 | `@end_delay` | `@end_delay 2s` | Delay after last action |
 
@@ -211,6 +221,11 @@ Actions define what happens in the recording.
 | `-> "text" >>` | Type and press Enter | `-> "git status" >>` |
 | `~duration` | Wait/pause | `~1s`, `~500ms`, `~2000ms` |
 | `key "name"` | Press special key | `key "escape"` |
+| `hide` | Pause frame capture | `hide` |
+| `show` | Resume frame capture | `show` |
+| `screenshot "file.png"` | Save current frame | `screenshot "step1.png"` |
+| `marker "name"` | Add chapter marker | `marker "Setup"` |
+| `require "cmd"` | Check command exists | `require "docker"` |
 
 ### Duration Format
 
