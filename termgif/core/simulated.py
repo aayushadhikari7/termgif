@@ -86,6 +86,16 @@ def record_script(script_path: Path, output_path: Path | None = None, bare: bool
     recorder.run_actions(actions)
 
     out = Path(config.output)
-    recorder.save_gif(out)
+
+    # Detect format from extension or config
+    ext = out.suffix.lower().lstrip('.')
+    if config.format and config.format != 'gif':
+        fmt = config.format
+    elif ext in ('webp', 'mp4', 'webm', 'png', 'apng', 'svg', 'cast'):
+        fmt = ext
+    else:
+        fmt = 'gif'
+
+    recorder.save(out, format=fmt)
 
     return out

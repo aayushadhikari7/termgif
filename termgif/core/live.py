@@ -334,6 +334,16 @@ def record_live(script_path: Path, output: Path | None = None, native_colors: bo
 
     recorder = LiveRecorder(config)
     recorder.run_actions(actions)
-    recorder.save_gif(output_path)
+
+    # Detect format from extension or config
+    ext = output_path.suffix.lower().lstrip('.')
+    if config.format and config.format != 'gif':
+        fmt = config.format
+    elif ext in ('webp', 'mp4', 'webm', 'png', 'apng', 'svg', 'cast'):
+        fmt = ext
+    else:
+        fmt = 'gif'
+
+    recorder.save(output_path, format=fmt)
 
     return output_path
